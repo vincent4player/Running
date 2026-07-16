@@ -148,6 +148,10 @@
     font-variation-settings:"wdth" 122,"wght" 800;
     text-transform:uppercase;letter-spacing:.04em;font-size:15px;
   }
+  .ver{
+    font-size:10px;color:var(--ink-soft);vertical-align:super;
+    font-variation-settings:"wdth" 100,"wght" 600;text-transform:none;letter-spacing:0;
+  }
   .sheet-hint{font-size:12px;color:var(--ink-soft)}
 
   .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -336,7 +340,7 @@
 <section class="sheet" id="sheet">
   <div class="grab" id="grab"></div>
   <div class="sheet-head">
-    <div class="sheet-title">Nouvelle boucle</div>
+    <div class="sheet-title">Nouvelle boucle <span class="ver">v3</span></div>
     <div class="sheet-hint" id="startHint">Touchez la carte pour placer le départ</div>
     <button class="collapse-btn" id="collapseBtn" title="Réduire le panneau" aria-label="Réduire le panneau">▾</button>
   </div>
