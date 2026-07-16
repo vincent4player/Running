@@ -37,7 +37,12 @@
     --sab:env(safe-area-inset-bottom,0px);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html{height:100%; height:var(--app-h, 100%); overscroll-behavior:none}
+  html{
+    height:100%;
+    height:100dvh;                 /* hauteur dynamique : suit la barre d'outils iOS */
+    overscroll-behavior:none;
+    background:var(--paper);       /* toute zone résiduelle en bas sera blanche, fondue au panneau */
+  }
   body{
     position:fixed;
     inset:0;
@@ -115,6 +120,16 @@
     padding:14px 16px calc(var(--sab) + 14px);
     max-width:520px;margin:0 auto;
     transition:transform .25s ease;
+  }
+  /* Prolonge le fond blanc du panneau sous le bord bas de l'écran : si iOS
+     laisse apparaître une zone résiduelle (bug de viewport en mode app),
+     elle est recouverte en blanc au lieu de montrer une bande grise. */
+  .sheet::after{
+    content:"";
+    position:absolute;
+    left:0;right:0;top:100%;
+    height:200px;
+    background:var(--paper);
   }
   .sheet.folded{transform:translateY(calc(100% - 58px))}
   .grab{
