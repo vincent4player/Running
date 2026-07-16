@@ -37,7 +37,7 @@
     --sab:env(safe-area-inset-bottom,0px);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%; overscroll-behavior:none}
+  html,body{height:100%; height:var(--app-h, 100%); overscroll-behavior:none}
   body{
     position:fixed;
     inset:0;
@@ -383,6 +383,26 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
 "use strict";
+
+/* Contourne un bug iOS Safari (surtout en app écran d'accueil) : après
+   l'ouverture puis la fermeture d'un clavier (champs numériques distance/
+   allure/recherche), la hauteur de page reste parfois figée sur l'ancienne
+   valeur réduite, laissant une bande grise en bas. On pilote la hauteur via
+   une variable CSS recalculée à chaque changement réel de viewport. */
+function setAppHeight(){
+  const h = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  document.documentElement.style.setProperty("--app-h", h + "px");
+}
+setAppHeight();
+window.addEventListener("resize", setAppHeight);
+window.addEventListener("orientationchange", () => setTimeout(setAppHeight, 50));
+if (window.visualViewport){
+  window.visualViewport.addEventListener("resize", setAppHeight);
+  window.visualViewport.addEventListener("scroll", setAppHeight);
+}
+// Un input qui perd le focus (clavier qui se ferme) déclenche aussi un recalcul,
+// avec un léger délai le temps que Safari termine son animation de clavier.
+document.addEventListener("focusout", () => setTimeout(setAppHeight, 60), true);
 
 /* Garde-fou : si Leaflet n'a pas pu être chargé (CDN bloqué, hors-ligne,
    webview sandboxée…), on affiche un message clair au lieu d'un écran noir. */
