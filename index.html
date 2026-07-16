@@ -7,6 +7,9 @@
 
 <!-- PWA : installable sur l'écran d'accueil (manifest inline, pas de fichier séparé) -->
 <meta name="theme-color" content="#101418">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -34,12 +37,15 @@
     --sab:env(safe-area-inset-bottom,0px);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
+  html,body{height:100%; overscroll-behavior:none}
   body{
+    position:fixed;
+    inset:0;
     font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
     font-variation-settings:"wdth" 100;
     color:var(--ink);
     overflow:hidden;
+    overscroll-behavior:none;
     background:var(--field);
   }
   button{font:inherit;border:0;cursor:pointer;background:none;color:inherit}
@@ -139,6 +145,15 @@
     font-variation-settings:"wdth" 110,"wght" 700;
     font-variant-numeric:tabular-nums;
   }
+  .pace-row{display:flex;align-items:baseline;gap:2px}
+  .pace-row input{width:0;flex:1;text-align:center}
+  .pace-row input:first-child{text-align:right}
+  .pace-row input:last-child{text-align:left}
+  .pace-sep{font-size:22px;font-variation-settings:"wdth" 110,"wght" 700;color:var(--ink-soft);flex:none}
+  /* masque les flèches de type=number pour un rendu propre */
+  .field input::-webkit-outer-spin-button,
+  .field input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .field input[type=number]{-moz-appearance:textfield}
   .actions{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;margin-top:10px}
   .vias{display:flex;align-items:center;gap:10px;margin-top:10px}
   .modes{
@@ -285,6 +300,7 @@
     <input id="searchInput" type="search" placeholder="Chercher un lieu de départ…" autocomplete="off">
   </form>
   <button class="icon-btn" id="locateBtn" title="Ma position" aria-label="Ma position">◎</button>
+  <button class="icon-btn" id="resetBtn" title="Réinitialiser la carte" aria-label="Réinitialiser la carte">↺</button>
   <button class="icon-btn" id="favOpenBtn" title="Favoris" aria-label="Favoris">★</button>
 </div>
 <div class="search-results" id="searchResults"></div>
@@ -314,8 +330,12 @@
       <input id="distInput" type="number" inputmode="decimal" min="1" max="60" step="0.5" value="8">
     </div>
     <div class="field">
-      <label for="paceInput">Allure (min/km)</label>
-      <input id="paceInput" type="text" inputmode="numeric" value="5:30" placeholder="5:30">
+      <label for="paceMin">Allure (min/km)</label>
+      <div class="pace-row">
+        <input id="paceMin" type="number" inputmode="numeric" min="2" max="20" value="5" aria-label="Minutes">
+        <span class="pace-sep">:</span>
+        <input id="paceSec" type="number" inputmode="numeric" min="0" max="59" value="30" aria-label="Secondes">
+      </div>
     </div>
   </div>
 
@@ -1012,16 +1032,21 @@ async function fetchElevation(lineCoords){
   return { gain, idx, ele: el };
 }
 
-/* ---- temps estimé selon l'allure ---- */
-function parsePace(str){
-  const m = String(str).trim().match(/^(\d{1,2})(?::([0-5]?\d))?$/);
-  if (!m) return null;
-  return parseInt(m[1],10) + (m[2] ? parseInt(m[2],10)/60 : 0);
+/* ---- temps estimé selon l'allure (min + sec séparés) ---- */
+function clampPaceFields(){
+  let mn = parseInt($("paceMin").value, 10);
+  let sc = parseInt($("paceSec").value, 10);
+  if (isNaN(mn) || mn < 2)  mn = 2;
+  if (mn > 20) mn = 20;
+  if (isNaN(sc) || sc < 0) sc = 0;
+  if (sc > 59) sc = 59;
+  $("paceMin").value = mn;
+  $("paceSec").value = sc;
+  return mn + sc/60;
 }
 function updateTime(){
   if (!currentRoute) return;
-  const pace = parsePace($("paceInput").value);
-  if (!pace) { $("statTime").textContent = "–"; return; }
+  const pace = clampPaceFields();
   const totalMin = (currentRoute.distance/1000) * pace;
   const h = Math.floor(totalMin/60), mn = Math.round(totalMin%60);
   $("statTime").innerHTML = h > 0
@@ -1029,18 +1054,22 @@ function updateTime(){
     : `${mn} <small>min</small>`;
   savePrefs();
 }
-$("paceInput").addEventListener("change", updateTime);
+$("paceMin").addEventListener("change", updateTime);
+$("paceSec").addEventListener("change", updateTime);
 $("distInput").addEventListener("change", savePrefs);
 
 function savePrefs(){
-  try{ localStorage.setItem(LS_PREFS, JSON.stringify({ dist:$("distInput").value, pace:$("paceInput").value, mode:runMode })); }catch{}
+  try{ localStorage.setItem(LS_PREFS, JSON.stringify({
+    dist:$("distInput").value, paceMin:$("paceMin").value, paceSec:$("paceSec").value, mode:runMode
+  })); }catch{}
 }
 (function loadPrefs(){
   try{
     const p = JSON.parse(localStorage.getItem(LS_PREFS) || "null");
     if (p){
       $("distInput").value = p.dist || "8";
-      $("paceInput").value = p.pace || "5:30";
+      $("paceMin").value = p.paceMin ?? (p.pace ? p.pace.split(":")[0] : "5");
+      $("paceSec").value = p.paceSec ?? (p.pace ? p.pace.split(":")[1] : "30");
       if (p.mode){
         runMode = p.mode;
         document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x.dataset.mode === runMode));
@@ -1217,6 +1246,44 @@ $("favCloseBtn").addEventListener("click", closeFavs);
 /* ================= Panneau repliable ================= */
 $("grab").addEventListener("click", () => $("sheet").classList.toggle("folded"));
 $("collapseBtn").addEventListener("click", () => $("sheet").classList.toggle("folded"));
+
+/* ================= Réinitialiser la carte ================= */
+function resetMap(){
+  if (!confirm("Réinitialiser la carte ? Le départ, la boucle et les passages en cours seront effacés (vos favoris et Maison sont conservés).")) return;
+
+  if (routeLayer)  { map.removeLayer(routeLayer);  routeLayer  = null; }
+  if (decorLayer)  { map.removeLayer(decorLayer);  decorLayer  = null; }
+  if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
+  if (meMarker)    { map.removeLayer(meMarker);    meMarker    = null; }
+  viaMarkers.forEach(m => map.removeLayer(m));
+  viaMarkers = [];
+  viaMode = false;
+  $("viaBtn").classList.remove("on");
+  refreshVias();
+
+  currentRoute = null;
+  usedFallbackRouter = false;
+  $("stats").classList.remove("on");
+  $("statDist").textContent = "–";
+  $("statElev").textContent = "–";
+  $("statTime").textContent = "–";
+  $("elevChart").hidden = true;
+  $("quality").hidden = true;
+  $("saveBtn").disabled = true;
+  $("rerollBtn").disabled = true;
+  $("gpxBtn").disabled = true;
+  $("startHint").textContent = "Touchez la carte pour placer le départ";
+  $("searchInput").value = "";
+  $("searchResults").classList.remove("open");
+  $("sheet").classList.remove("folded");
+
+  runMode = "mix";
+  document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x.dataset.mode === "mix"));
+
+  map.setView([46.6, 2.4], 6);   // France entière, comme au premier lancement
+  toast("Carte réinitialisée");
+}
+$("resetBtn").addEventListener("click", resetMap);
 
 /* ================= Position initiale ================= */
 // Pas de géolocalisation automatique : la carte s'ouvre sur la France entière,
