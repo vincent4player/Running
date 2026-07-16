@@ -37,10 +37,14 @@
     --sab:env(safe-area-inset-bottom,0px);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%; height:var(--app-h, 100%); overscroll-behavior:none}
+  html{height:100%; height:var(--app-h, 100%); overscroll-behavior:none}
   body{
     position:fixed;
     inset:0;
+    /* Pas de "height" ici : sur un élément fixed avec inset:0, top+bottom
+       suffisent déjà à occuper tout l'écran. Ajouter une hauteur explicite
+       (même via une variable JS) peut la sur-contraindre et laisser une
+       bande vide en bas si le calcul sous-estime l'écran réel. */
     font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
     font-variation-settings:"wdth" 100;
     color:var(--ink);
