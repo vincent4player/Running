@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Boucle — générateur de parcours</title>
+
+<!-- PWA : installable sur l'écran d'accueil (manifest inline, pas de fichier séparé) -->
+<meta name="theme-color" content="#101418">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Boucle">
+<link rel="manifest" href='data:application/manifest+json,{"name":"Boucle","short_name":"Boucle","display":"standalone","start_url":".","background_color":"%23101418","theme_color":"%23101418","icons":[{"src":"data:image/svg+xml,%253Csvg xmlns=%2527http://www.w3.org/2000/svg%2527 viewBox=%25270 0 100 100%2527%253E%253Crect width=%2527100%2527 height=%2527100%2527 rx=%252722%2527 fill=%2527%2523101418%2527/%253E%253Ccircle cx=%252750%2527 cy=%252750%2527 r=%252726%2527 fill=%2527none%2527 stroke=%2527%2523E8490F%2527 stroke-width=%252710%2527 stroke-dasharray=%2527120 44%2527 stroke-linecap=%2527round%2527/%253E%253C/svg%253E","sizes":"any","type":"image/svg+xml"}]}'>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23101418'/%3E%3Ccircle cx='50' cy='50' r='26' fill='none' stroke='%23E8490F' stroke-width='10' stroke-dasharray='120 44' stroke-linecap='round'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap">
+
+<style>
+  :root{
+    --ink:#101418;          /* texte principal */
+    --ink-soft:#5B636C;     /* texte secondaire */
+    --paper:#FFFFFF;        /* panneaux */
+    --field:#EFF1F0;        /* fonds de champs */
+    --line:#E1E4E2;         /* hairlines */
+    --blaze:#E8490F;        /* orange balisage : action + tracé */
+    --blaze-ink:#B33305;
+    --pine:#0E5741;         /* vert sapin : sauvegarde / favoris */
+    --radius:18px;
+    --shadow:0 8px 28px rgba(16,20,24,.16);
+    --sat:env(safe-area-inset-top,0px);
+    --sab:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-variation-settings:"wdth" 100;
+    color:var(--ink);
+    overflow:hidden;
+    background:var(--field);
+  }
+  button{font:inherit;border:0;cursor:pointer;background:none;color:inherit}
+  input{font:inherit;border:0;outline:0;background:none;color:inherit}
+
+  #map{position:fixed;inset:0;z-index:0}
+  .leaflet-control-attribution{font-size:9px}
+
+  /* ---------- barre de recherche ---------- */
+  .search{
+    position:fixed;z-index:20;
+    top:calc(var(--sat) + 12px);left:12px;right:12px;
+    display:flex;gap:8px;
+  }
+  .search-box{
+    flex:1;display:flex;align-items:center;gap:8px;
+    background:var(--paper);border-radius:999px;box-shadow:var(--shadow);
+    padding:0 8px 0 16px;height:48px;
+  }
+  .search-box input{flex:1;min-width:0;font-size:15px}
+  .search-box input::placeholder{color:var(--ink-soft)}
+  .icon-btn{
+    width:48px;height:48px;border-radius:999px;flex:none;
+    background:var(--paper);box-shadow:var(--shadow);
+    display:grid;place-items:center;font-size:20px;
+  }
+  .icon-btn:active{transform:scale(.94)}
+  .search-results{
+    position:fixed;z-index:20;
+    top:calc(var(--sat) + 66px);left:12px;right:72px;
+    background:var(--paper);border-radius:var(--radius);box-shadow:var(--shadow);
+    overflow:hidden;display:none;
+  }
+  .search-results.open{display:block}
+  .search-results button{
+    display:block;width:100%;text-align:left;
+    padding:12px 16px;font-size:13.5px;border-bottom:1px solid var(--line);
+  }
+  .search-results button:last-child{border-bottom:0}
+  .search-results button:active{background:var(--field)}
+
+  /* ---------- panneau bas ---------- */
+  .sheet{
+    position:fixed;z-index:15;left:0;right:0;bottom:0;
+    background:var(--paper);
+    border-radius:22px 22px 0 0;
+    box-shadow:0 -8px 32px rgba(16,20,24,.18);
+    padding:14px 16px calc(var(--sab) + 14px);
+    max-width:520px;margin:0 auto;
+    transition:transform .25s ease;
+  }
+  .sheet.folded{transform:translateY(calc(100% - 58px))}
+  .grab{
+    width:44px;height:5px;border-radius:99px;background:var(--line);
+    margin:0 auto 4px;
+  }
+  .sheet-head{display:flex;align-items:baseline;justify-content:space-between;padding:4px 2px 10px}
+  .sheet-title{
+    font-variation-settings:"wdth" 122,"wght" 800;
+    text-transform:uppercase;letter-spacing:.04em;font-size:15px;
+  }
+  .sheet-hint{font-size:12px;color:var(--ink-soft)}
+
+  .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .field{
+    background:var(--field);border-radius:14px;padding:9px 14px 7px;
+  }
+  .field label{
+    display:block;font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.08em;color:var(--ink-soft);
+    font-variation-settings:"wght" 600;
+  }
+  .field input{
+    width:100%;font-size:22px;
+    font-variation-settings:"wdth" 110,"wght" 700;
+    font-variant-numeric:tabular-nums;
+  }
+  .actions{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;margin-top:10px}
+  .vias{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .modes{
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;
+    background:var(--field);border-radius:12px;padding:4px;margin-top:10px;
+  }
+  .mode{
+    height:38px;border-radius:9px;font-size:13.5px;
+    font-variation-settings:"wght" 700;color:var(--ink-soft);
+  }
+  .mode.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 4px rgba(16,20,24,.12)}
+  .start-chips{
+    display:flex;gap:8px;overflow-x:auto;padding:0 2px 10px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  }
+  .start-chips::-webkit-scrollbar{display:none}
+  .schip{
+    flex:none;display:flex;align-items:center;gap:7px;
+    background:var(--field);border-radius:999px;padding:8px 13px;
+    font-size:13px;font-variation-settings:"wght" 700;white-space:nowrap;
+  }
+  .schip .x{color:var(--ink-soft);font-size:12px;padding:0 1px}
+  .schip.add{background:var(--pine);color:#fff}
+  .chip{
+    background:var(--field);border-radius:999px;padding:8px 14px;
+    font-size:13px;font-variation-settings:"wght" 700;
+  }
+  .chip.on{background:var(--pine);color:#fff}
+  .chip.danger{color:var(--blaze-ink)}
+  .via-info{font-size:12.5px;color:var(--ink-soft);flex:1}
+  .via-pin{
+    width:24px;height:24px;border-radius:8px;
+    background:var(--pine);color:#fff;border:2px solid #fff;
+    display:grid;place-items:center;
+    font-size:12px;font-variation-settings:"wght" 800;
+    box-shadow:0 2px 6px rgba(0,0,0,.35);
+  }
+  .btn{
+    height:52px;border-radius:14px;font-size:15px;
+    font-variation-settings:"wdth" 112,"wght" 750;
+    text-transform:uppercase;letter-spacing:.03em;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:transform .1s ease, opacity .2s;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn:disabled{opacity:.45;pointer-events:none}
+  .btn-blaze{background:var(--blaze);color:#fff}
+  .btn-ghost{background:var(--field);width:52px;font-size:20px}
+  .btn-gpx{width:auto;padding:0 13px;font-size:13px}
+  .btn-pine{background:var(--pine);color:#fff;width:52px;font-size:20px}
+
+  /* ---------- bandeau stats ---------- */
+  .stats{
+    display:none;grid-template-columns:1.2fr 1fr 1fr;gap:0;
+    margin-top:12px;border-top:1px solid var(--line);padding-top:10px;
+  }
+  .stats.on{display:grid}
+  .stat{padding:0 6px;border-left:1px solid var(--line)}
+  .stat:first-child{border-left:0;padding-left:0}
+  .stat b{
+    display:block;font-size:26px;line-height:1.05;
+    font-variation-settings:"wdth" 118,"wght" 820;
+    font-variant-numeric:tabular-nums;
+  }
+  .stat b small{font-size:13px;font-variation-settings:"wdth" 100,"wght" 600;color:var(--ink-soft)}
+  .stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
+  .stat.blaze b{color:var(--blaze-ink)}
+  .elev-chart{margin-top:8px}
+  .elev-chart svg{display:block;width:100%;height:52px;border-radius:8px;background:var(--field)}
+  .elev-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);margin-top:2px}
+  .quality{font-size:11.5px;color:var(--ink-soft);margin-top:8px;text-align:center}
+
+  /* ---------- favoris ---------- */
+  .panel{
+    position:fixed;inset:0;z-index:30;
+    background:var(--paper);
+    transform:translateX(105%);transition:transform .28s ease;
+    display:flex;flex-direction:column;
+    padding:calc(var(--sat) + 10px) 16px calc(var(--sab) + 10px);
+  }
+  .panel.open{transform:translateX(0)}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;padding:6px 0 14px}
+  .panel-head h2{
+    font-size:22px;text-transform:uppercase;letter-spacing:.03em;
+    font-variation-settings:"wdth" 122,"wght" 830;
+  }
+  .fav-list{flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px}
+  .fav{
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .fav-info{flex:1 1 100%;min-width:0}
+  .fav-info b{display:block;font-size:15px;font-variation-settings:"wght" 700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fav-info span{font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .fav .load{background:var(--field);border-radius:10px;padding:9px 13px;font-size:13px;font-variation-settings:"wght" 700}
+  .fav .del{color:var(--blaze-ink);font-size:17px;padding:8px}
+  .empty{color:var(--ink-soft);text-align:center;margin-top:40px;font-size:14px;line-height:1.6}
+
+  /* ---------- toast & loader ---------- */
+  .toast{
+    position:fixed;z-index:40;left:50%;transform:translateX(-50%) translateY(20px);
+    bottom:calc(var(--sab) + 90px);
+    background:var(--ink);color:#fff;font-size:13.5px;
+    padding:10px 18px;border-radius:999px;opacity:0;pointer-events:none;
+    transition:.25s;max-width:88vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .spin{
+    width:18px;height:18px;border-radius:50%;flex:none;
+    border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;
+    animation:sp .7s linear infinite;display:none;
+  }
+  .busy .spin{display:block}
+  @keyframes sp{to{transform:rotate(1turn)}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+  .start-pin{
+    width:20px;height:20px;border-radius:50%;
+    background:var(--ink);border:4px solid #fff;
+    box-shadow:0 2px 8px rgba(0,0,0,.4);
+  }
+  .km-dot{
+    width:22px;height:22px;border-radius:50%;
+    background:#fff;border:2px solid var(--blaze);
+    display:grid;place-items:center;
+    font-size:11px;font-variation-settings:"wght" 800;color:var(--blaze-ink);
+    box-shadow:0 1px 4px rgba(0,0,0,.35);
+  }
+  .dir-arrow{
+    font-size:15px;line-height:1;color:#fff;
+    text-shadow:0 0 2px var(--blaze-ink),0 0 2px var(--blaze-ink),0 0 3px var(--blaze-ink);
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Recherche d'adresse -->
+<div class="search">
+  <form class="search-box" id="searchForm">
+    <span aria-hidden="true">⌕</span>
+    <input id="searchInput" type="search" placeholder="Chercher un lieu de départ…" autocomplete="off">
+  </form>
+  <button class="icon-btn" id="locateBtn" title="Ma position" aria-label="Ma position">◎</button>
+  <button class="icon-btn" id="favOpenBtn" title="Favoris" aria-label="Favoris">★</button>
+</div>
+<div class="search-results" id="searchResults"></div>
+
+<!-- Panneau principal -->
+<section class="sheet" id="sheet">
+  <div class="grab" id="grab"></div>
+  <div class="sheet-head">
+    <div class="sheet-title">Nouvelle boucle</div>
+    <div class="sheet-hint" id="startHint">Touchez la carte pour placer le départ</div>
+  </div>
+
+  <div class="start-chips" id="startChips"></div>
+
+  <div class="controls">
+    <div class="field">
+      <label for="distInput">Distance visée (km)</label>
+      <input id="distInput" type="number" inputmode="decimal" min="1" max="60" step="0.5" value="8">
+    </div>
+    <div class="field">
+      <label for="paceInput">Allure (min/km)</label>
+      <input id="paceInput" type="text" inputmode="numeric" value="5:30" placeholder="5:30">
+    </div>
+  </div>
+
+  <div class="modes" id="modes">
+    <button class="mode on" data-mode="mix">Mixte</button>
+    <button class="mode" data-mode="trail">Forêt</button>
+    <button class="mode" data-mode="road">Route</button>
+  </div>
+
+  <div class="vias">
+    <button class="chip" id="viaBtn">＋ Passage obligé</button>
+    <span class="via-info" id="viaInfo">aucun</span>
+    <button class="chip danger" id="viaClearBtn" hidden>Effacer</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-blaze" id="genBtn">
+      <span class="spin"></span><span class="btn-label" id="genLabel">Générer la boucle</span>
+    </button>
+    <button class="btn btn-ghost btn-gpx" id="gpxBtn" title="Exporter en GPX pour la montre" aria-label="Exporter en GPX" disabled>GPX</button>
+    <button class="btn btn-ghost" id="rerollBtn" title="Nouvel itinéraire aléatoire" aria-label="Nouvel itinéraire aléatoire" disabled>⟳</button>
+    <button class="btn btn-pine" id="saveBtn" title="Ajouter aux favoris" aria-label="Ajouter aux favoris" disabled>★</button>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat blaze"><b id="statDist">–</b><span>Distance</span></div>
+    <div class="stat"><b id="statElev">–</b><span>Dénivelé +</span></div>
+    <div class="stat"><b id="statTime">–</b><span>Temps estimé</span></div>
+  </div>
+  <div class="elev-chart" id="elevChart" hidden></div>
+  <div class="quality" id="quality" hidden></div>
+</section>
+
+<!-- Favoris -->
+<aside class="panel" id="favPanel" aria-label="Mes parcours favoris">
+  <div class="panel-head">
+    <h2>Mes parcours</h2>
+    <button class="icon-btn" id="favCloseBtn" aria-label="Fermer" style="box-shadow:none;background:var(--field)">✕</button>
+  </div>
+  <div class="fav-list" id="favList"></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+"use strict";
+
+/* Garde-fou : si Leaflet n'a pas pu être chargé (CDN bloqué, hors-ligne,
+   webview sandboxée…), on affiche un message clair au lieu d'un écran noir. */
+if (typeof L === "undefined") {
+  document.body.insertAdjacentHTML("beforeend",
+    '<div style="position:fixed;inset:0;z-index:99;background:#101418;color:#fff;' +
+    'display:grid;place-items:center;padding:24px;text-align:center;font-size:15px;line-height:1.6">' +
+    "<div><b>Impossible de charger la carte.</b><br>" +
+    "Cet environnement bloque les ressources externes (CDN Leaflet, tuiles OSM).<br>" +
+    "Ouvrez ce fichier dans Safari ou Chrome, servi en HTTP(S).</div></div>");
+  throw new Error("Leaflet non chargé (ressources externes bloquées ?)");
+}
+
+/* ================= Config ================= */
+// Le serveur démo router.project-osrm.org ne calcule en réalité que le profil
+// voiture. Pour un vrai routage PIÉTON on utilise l'instance publique FOSSGIS
+// (routing.openstreetmap.de), avec repli sur le serveur démo si indisponible.
+const ROUTERS = [
+  "https://routing.openstreetmap.de/routed-foot/route/v1/foot/",
+  "https://router.project-osrm.org/route/v1/foot/"
+];
+const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const ELEVATION = "https://api.open-elevation.com/api/v1/lookup";
+const LS_FAVS   = "boucle.favs.v1";
+const LS_PREFS  = "boucle.prefs.v1";
+const TOL_M     = 200;    // ±200 m sur la distance cible
+const MAX_TRIES = 12;
+
+/* ================= Carte ================= */
+const map = L.map("map", { zoomControl:false }).setView([46.6, 2.4], 6);   // France entière
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+L.control.zoom({ position:"topright" }).addTo(map);
+
+let startMarker = null, routeLayer = null, meMarker = null;
+let currentRoute = null;   // { geojson, distance, gain, start:[lat,lng] }
+let generating = false;
+
+const $ = id => document.getElementById(id);
+const toastEl = $("toast");
+let toastTimer;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 3200);
+}
+
+function setStart(lat, lng, pan){
+  if (!startMarker){
+    startMarker = L.marker([lat,lng], {
+      draggable:true,
+      icon: L.divIcon({ className:"", html:'<div class="start-pin"></div>', iconSize:[20,20], iconAnchor:[10,10] })
+    }).addTo(map);
+    startMarker.on("dragend", () => { $("startHint").textContent = "Départ déplacé"; });
+  } else {
+    startMarker.setLatLng([lat,lng]);
+  }
+  $("startHint").textContent = "Départ placé ✓";
+  if (pan) map.setView([lat,lng], Math.max(map.getZoom(), 14));
+}
+
+map.on("click", e => {
+  if (viaMode) addVia(e.latlng.lat, e.latlng.lng);
+  else setStart(e.latlng.lat, e.latlng.lng, false);
+});
+
+/* ---- points de passage obligés ---- */
+let viaMarkers = [];
+let viaMode = false;
+
+function viaIcon(n){
+  return L.divIcon({ className:"", html:`<div class="via-pin">${n}</div>`,
+                     iconSize:[24,24], iconAnchor:[12,12] });
+}
+function refreshVias(){
+  viaMarkers.forEach((m,i) => m.setIcon(viaIcon(i+1)));
+  $("viaInfo").textContent = viaMarkers.length
+    ? viaMarkers.length + " point" + (viaMarkers.length > 1 ? "s" : "") + " — touchez un marqueur pour le retirer"
+    : "aucun";
+  $("viaClearBtn").hidden = !viaMarkers.length;
+}
+function addVia(lat, lng){
+  const m = L.marker([lat,lng], { draggable:true, icon: viaIcon(viaMarkers.length+1) }).addTo(map);
+  m.on("click", () => {
+    map.removeLayer(m);
+    viaMarkers = viaMarkers.filter(x => x !== m);
+    refreshVias();
+  });
+  viaMarkers.push(m);
+  refreshVias();
+}
+$("viaBtn").addEventListener("click", () => {
+  viaMode = !viaMode;
+  $("viaBtn").classList.toggle("on", viaMode);
+  $("startHint").textContent = viaMode
+    ? "Touchez la carte : chaque appui ajoute un passage"
+    : (startMarker ? "Départ placé ✓" : "Touchez la carte pour placer le départ");
+});
+$("viaClearBtn").addEventListener("click", () => {
+  viaMarkers.forEach(m => map.removeLayer(m));
+  viaMarkers = [];
+  refreshVias();
+});
+
+/* ---- géolocalisation ---- */
+$("locateBtn").addEventListener("click", () => {
+  if (!navigator.geolocation) return toast("Géolocalisation non disponible");
+  toast("Recherche de votre position…");
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude:lat, longitude:lng } = pos.coords;
+    if (meMarker) meMarker.setLatLng([lat,lng]);
+    else meMarker = L.circleMarker([lat,lng], { radius:7, color:"#fff", weight:2, fillColor:"#2A6DF0", fillOpacity:1 }).addTo(map);
+    setStart(lat, lng, true);
+  }, () => toast("Position refusée ou introuvable"), { enableHighAccuracy:true, timeout:10000 });
+});
+
+/* ================= Recherche Nominatim ================= */
+const resultsEl = $("searchResults");
+$("searchForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = $("searchInput").value.trim();
+  if (!q) return;
+  resultsEl.innerHTML = ""; resultsEl.classList.remove("open");
+  try{
+    const r = await fetch(`${NOMINATIM}?format=jsonv2&limit=5&q=${encodeURIComponent(q)}`,
+                          { headers:{ "Accept-Language":"fr" } });
+    const items = await r.json();
+    if (!items.length) return toast("Aucun résultat");
+    for (const it of items){
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = it.display_name;
+      b.addEventListener("click", () => {
+        resultsEl.classList.remove("open");
+        $("searchInput").blur();
+        setStart(+it.lat, +it.lon, true);
+      });
+      resultsEl.appendChild(b);
+    }
+    resultsEl.classList.add("open");
+  }catch{ toast("Recherche indisponible (réseau ?)"); }
+});
+document.addEventListener("click", e => {
+  if (!resultsEl.contains(e.target) && e.target.id !== "searchInput")
+    resultsEl.classList.remove("open");
+});
+
+/* ================= Départs favoris ================= */
+const LS_STARTS = "boucle.starts.v1";
+function getStarts(){ try{ return JSON.parse(localStorage.getItem(LS_STARTS) || "[]"); }catch{ return []; } }
+function setStarts(v){ try{ localStorage.setItem(LS_STARTS, JSON.stringify(v)); }catch{} }
+
+function renderStartChips(){
+  const el = $("startChips");
+  el.innerHTML = "";
+  for (const s of getStarts()){
+    const c = document.createElement("button");
+    c.className = "schip";
+    c.innerHTML = '<span></span><span class="x" aria-label="Supprimer">✕</span>';
+    c.querySelector("span").textContent = s.name;
+    c.addEventListener("click", e => {
+      if (e.target.classList.contains("x")){
+        if (confirm(`Supprimer le départ « ${s.name} » ?`)){
+          setStarts(getStarts().filter(x => x.id !== s.id));
+          renderStartChips();
+        }
+        return;
+      }
+      setStart(s.lat, s.lng, true);
+    });
+    el.appendChild(c);
+  }
+  const add = document.createElement("button");
+  add.className = "schip add";
+  add.textContent = "☆ Retenir ce départ";
+  add.addEventListener("click", () => {
+    if (!startMarker) return toast("Placez d'abord un départ (carte, recherche ou ◎)");
+    const p = startMarker.getLatLng();
+    const name = prompt("Nom de ce départ :", "Maison");
+    if (name === null) return;
+    const arr = getStarts();
+    arr.push({ id: Date.now(), name: name.trim() || "Départ", lat: p.lat, lng: p.lng });
+    setStarts(arr);
+    renderStartChips();
+    toast("Départ retenu ☆");
+  });
+  el.appendChild(add);
+}
+renderStartChips();
+
+/* ================= Mode de course & zones vertes ================= */
+let runMode = "mix";   // mix | trail | road
+document.querySelectorAll(".mode").forEach(b => b.addEventListener("click", () => {
+  runMode = b.dataset.mode;
+  document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x === b));
+  savePrefs();
+}));
+
+// Centres des zones boisées/vertes autour d'un point (Overpass / OpenStreetMap)
+let greenCache = { key:null, pts:[] };
+async function fetchGreenCenters(lat, lng, radiusM){
+  const key = lat.toFixed(3) + "," + lng.toFixed(3) + "," + Math.round(radiusM/500);
+  if (greenCache.key === key) return greenCache.pts;
+  const r = Math.round(radiusM * 1.4);
+  const q = `[out:json][timeout:10];(` +
+    `way["natural"~"wood|heath|scrub"](around:${r},${lat},${lng});` +
+    `way["landuse"~"forest|meadow"](around:${r},${lat},${lng});` +
+    `way["leisure"~"park|nature_reserve"](around:${r},${lat},${lng});` +
+    `);out center 120;`;
+  const resp = await fetch("https://overpass-api.de/api/interpreter", {
+    method:"POST",
+    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+    body:"data=" + encodeURIComponent(q)
+  });
+  const j = await resp.json();
+  const pts = (j.elements || []).map(e => e.center ? [e.center.lat, e.center.lon] : null).filter(Boolean);
+  greenCache = { key, pts };
+  return pts;
+}
+
+// Attire (trail) ou éloigne (road) les points aléatoires des zones vertes
+function biasWaypoints(rand, green, cLat, cLng, radius){
+  if (!green.length || runMode === "mix") return rand;
+  if (runMode === "trail"){
+    return rand.map(p => {
+      let bestPt = null, bestD = Infinity;
+      for (const g of green){ const d = haversine(p, g); if (d < bestD){ bestD = d; bestPt = g; } }
+      if (bestD > radius * 0.5) return p;              // aucun bois à portée : on garde le point
+      // léger décalage autour du centre du bois pour varier les boucles
+      return destPoint(bestPt[0], bestPt[1], 80 + Math.random()*220, Math.random()*360);
+    });
+  }
+  // road : ré-échantillonner les points trop proches d'une zone verte
+  return rand.map(p => {
+    for (let k=0; k<6; k++){
+      if (!green.some(g => haversine(p, g) < 300)) return p;
+      p = destPoint(cLat, cLng, radius*(0.85 + Math.random()*0.3), Math.random()*360);
+    }
+    return p;
+  });
+}
+
+/* ================= Génération de boucle ================= */
+function destPoint(lat, lng, distM, bearingDeg){
+  const R = 6371000, d = distM / R, br = bearingDeg * Math.PI/180;
+  const φ1 = lat*Math.PI/180, λ1 = lng*Math.PI/180;
+  const φ2 = Math.asin(Math.sin(φ1)*Math.cos(d) + Math.cos(φ1)*Math.sin(d)*Math.cos(br));
+  const λ2 = λ1 + Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(φ1),
+                             Math.cos(d)-Math.sin(φ1)*Math.sin(φ2));
+  return [φ2*180/Math.PI, ((λ2*180/Math.PI)+540)%360-180];
+}
+
+function circleWaypoints(lat, lng, radius, n, rotation){
+  const pts = [];
+  for (let i=0;i<n;i++){
+    const angle = rotation + i*(360/n) + (Math.random()*24-12);   // léger bruit
+    const r = radius * (0.85 + Math.random()*0.3);
+    pts.push(destPoint(lat, lng, r, angle));
+  }
+  return pts;
+}
+
+/* ---- géométrie utilitaire ([lat,lng]) ---- */
+function haversine(a, b){
+  const R = 6371000, toR = Math.PI/180;
+  const dφ = (b[0]-a[0])*toR, dλ = (b[1]-a[1])*toR;
+  const s = Math.sin(dφ/2)**2 + Math.cos(a[0]*toR)*Math.cos(b[0]*toR)*Math.sin(dλ/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function bearingDeg(a, b){
+  const toR = Math.PI/180;
+  const y = Math.sin((b[1]-a[1])*toR)*Math.cos(b[0]*toR);
+  const x = Math.cos(a[0]*toR)*Math.sin(b[0]*toR) -
+            Math.sin(a[0]*toR)*Math.cos(b[0]*toR)*Math.cos((b[1]-a[1])*toR);
+  return (Math.atan2(y,x)*180/Math.PI + 360) % 360;
+}
+
+/* ---- bornes km + flèches de sens le long du tracé (coords GeoJSON [lng,lat]) ---- */
+let decorLayer = null;
+function decorateRoute(lineCoords){
+  if (decorLayer) map.removeLayer(decorLayer);
+  decorLayer = L.layerGroup().addTo(map);
+  let acc = 0, nextKm = 1000, nextArrow = 400;
+  for (let i=1; i<lineCoords.length; i++){
+    const a = [lineCoords[i-1][1], lineCoords[i-1][0]];
+    const b = [lineCoords[i][1],   lineCoords[i][0]];
+    acc += haversine(a, b);
+    if (acc >= nextArrow){
+      const rot = bearingDeg(a, b) - 90;   // "➤" pointe vers l'est par défaut
+      L.marker(b, { interactive:false, icon: L.divIcon({ className:"",
+        html:`<div class="dir-arrow" style="transform:rotate(${rot.toFixed(0)}deg)">➤</div>`,
+        iconSize:[16,16], iconAnchor:[8,8] }) }).addTo(decorLayer);
+      nextArrow += 700;
+    }
+    if (acc >= nextKm){
+      L.marker(b, { interactive:false, icon: L.divIcon({ className:"",
+        html:`<div class="km-dot">${Math.round(nextKm/1000)}</div>`,
+        iconSize:[22,22], iconAnchor:[11,11] }) }).addTo(decorLayer);
+      nextKm += 1000;
+    }
+  }
+}
+
+/* ---- ordonner des points autour d'un centre, en partant de l'angle du départ ---- */
+function orderAround(cLat, cLng, startPt, pts, dir){
+  const ang = p => bearingDeg([cLat,cLng], p);
+  const a0 = ang(startPt);
+  const key = p => ((ang(p) - a0) * dir + 720) % 360;
+  return pts.slice().sort((p,q) => key(p) - key(q));
+}
+
+/* ---- taux de repli : part des segments parcourus deux fois ---- */
+function overlapRatio(lineCoords){
+  const seen = new Set(); let dup = 0;
+  for (let i=1; i<lineCoords.length; i++){
+    const k1 = lineCoords[i-1][0].toFixed(4) + "," + lineCoords[i-1][1].toFixed(4);
+    const k2 = lineCoords[i][0].toFixed(4) + "," + lineCoords[i][1].toFixed(4);
+    if (k1 === k2) continue;
+    const key = k1 < k2 ? k1+"|"+k2 : k2+"|"+k1;
+    if (seen.has(key)) dup++; else seen.add(key);
+  }
+  return dup / Math.max(1, seen.size);
+}
+
+/* ---- projection d'un point sur un segment (coords GeoJSON [lng,lat]) ----
+   Retourne d = distance en mètres au segment, t = position le long (0=A, 1=B) */
+function pointSegProj(p, a, b){
+  const lat0 = a[1]*Math.PI/180, kx = Math.cos(lat0)*111320, ky = 110540;
+  const px = (p[0]-a[0])*kx, py = (p[1]-a[1])*ky;
+  const bx = (b[0]-a[0])*kx, by = (b[1]-a[1])*ky;
+  const L2 = bx*bx + by*by;
+  if (!L2) return { d: Math.hypot(px, py), t: 0 };
+  const t = (px*bx + py*by) / L2;
+  const tc = Math.max(0, Math.min(1, t));
+  return { d: Math.hypot(px - tc*bx, py - tc*by), t };
+}
+
+/* ---- excision des antennes : retire les allers-retours du tracé.
+   Comparaison GÉOMÉTRIQUE (tolérance 8 m), pas exacte : l'aller et le retour
+   d'un même chemin peuvent être décrits avec des sommets différents par OSRM.
+   Un point qui revient sur le segment précédent = retour en arrière → on annule.
+   Les pointes à moins de 60 m d'un passage obligé sont protégées. ---- */
+function pruneSpurs(lineCoords, protectLatLng){
+  const prot = c => protectLatLng.some(v => haversine([c[1],c[0]], v) < 60);
+  const near = (a,b,m) => haversine([a[1],a[0]], [b[1],b[0]]) < m;
+  let pts = lineCoords, rounds = 0, changed = true;
+  while (changed && rounds++ < 4){
+    changed = false;
+    const out = [];
+    for (const p of pts){
+      let guard = 0;
+      while (out.length >= 2 && guard++ < 2000 && !prot(out[out.length-1])){
+        const A = out[out.length-2], B = out[out.length-1];
+        const back = near(p, A, 8);                       // p est revenu sur A
+        const onSeg = !back && (() => {
+          const pr = pointSegProj(p, A, B);
+          return pr.d < 8 && pr.t < 0.98 && !near(p, B, 2);   // p recule le long de A→B
+        })();
+        if (back || onSeg){ out.pop(); changed = true; }
+        else break;
+      }
+      if (!out.length || !near(out[out.length-1], p, 1.5)) out.push(p);
+      else changed = true;
+    }
+    if (out.length < 4) break;
+    pts = out;
+  }
+  return pts;
+}
+
+/* ---- longueur d'un tracé GeoJSON [lng,lat] en mètres ---- */
+function lineLength(lineCoords){
+  let d = 0;
+  for (let i=1; i<lineCoords.length; i++)
+    d += haversine([lineCoords[i-1][1], lineCoords[i-1][0]], [lineCoords[i][1], lineCoords[i][0]]);
+  return d;
+}
+
+/* ---- route OSRM nettoyée de ses antennes, distance recalculée ---- */
+function cleanRoute(route, vias){
+  const pruned = pruneSpurs(route.geometry.coordinates, vias);
+  if (pruned.length < route.geometry.coordinates.length){
+    route.geometry.coordinates = pruned;
+    route.distance = lineLength(pruned);
+  }
+  return route;
+}
+
+let usedFallbackRouter = false;
+async function osrmRoute(coords){
+  const path = coords.map(c => `${c[1].toFixed(6)},${c[0].toFixed(6)}`).join(";");
+  const qs = "?overview=full&geometries=geojson&steps=false&continue_straight=true";
+  let lastErr;
+  for (let i=0; i<ROUTERS.length; i++){
+    try{
+      const r = await fetch(ROUTERS[i] + path + qs);
+      const j = await r.json();
+      if (j.code === "Ok" && j.routes && j.routes.length){
+        usedFallbackRouter = (i > 0);
+        return j.routes[0];
+      }
+      lastErr = new Error(j.code || "Pas de route");
+    }catch(err){ lastErr = err; }
+  }
+  throw lastErr || new Error("Routage indisponible");
+}
+
+async function generateLoop(reroll){
+  if (generating) return;
+  if (!startMarker) return toast("Placez d'abord un point de départ (carte, recherche ou ◎)");
+  const targetKm = parseFloat($("distInput").value);
+  if (!targetKm || targetKm < 1 || targetKm > 60) return toast("Distance entre 1 et 60 km");
+
+  generating = true;
+  $("genBtn").classList.add("busy");
+  $("rerollBtn").disabled = true;
+  $("saveBtn").disabled = true;
+  $("gpxBtn").disabled = true;
+
+  const { lat, lng } = startMarker.getLatLng();
+  const start = [lat, lng];
+  const target = targetKm * 1000;
+  const vias = viaMarkers.map(m => { const p = m.getLatLng(); return [p.lat, p.lng]; });
+  const nWp = targetKm <= 4 ? 3 : targetKm <= 12 ? 4 : 5;
+  const nRand = Math.max(vias.length ? 1 : 3, nWp - vias.length);
+  let rotation = Math.random()*360;
+  let dir = Math.random() < 0.5 ? 1 : -1;      // sens de la boucle, aléatoire
+
+  // Centre du nuage de points imposés (départ + passages)
+  const anchor = [start, ...vias];
+  const cLat = anchor.reduce((s,p)=>s+p[0],0)/anchor.length;
+  const cLng = anchor.reduce((s,p)=>s+p[1],0)/anchor.length;
+  const farthest = Math.max(...anchor.map(p => haversine([cLat,cLng], p)));
+
+  // Rayon initial : périmètre du cercle ≈ distance cible, corrigé (les rues
+  // rallongent ~15 %), et au moins au niveau du point imposé le plus éloigné
+  let radius = Math.max(target / (2*Math.PI) / 1.15, farthest * 1.1);
+  let best = null;
+
+  try{
+    // Zones vertes autour du centre (pour les modes Forêt et Route)
+    let green = [];
+    if (runMode !== "mix"){
+      green = await fetchGreenCenters(cLat, cLng, radius).catch(() => []);
+      if (runMode === "trail" && !green.length)
+        toast("Aucune zone boisée trouvée autour du départ — boucle classique générée");
+    }
+
+    // Si les passages obligés couvrent déjà (ou dépassent) la distance cible,
+    // inutile d'ajouter des points aléatoires : on route simplement à travers eux.
+    if (vias.length){
+      const baseRoute = cleanRoute(await osrmRoute([start, ...vias, start]), vias);
+      if (baseRoute.distance >= target - TOL_M){
+        displayRoute(baseRoute, start);
+        if (baseRoute.distance > target + TOL_M)
+          toast(`Vos points de passage imposent déjà ${(baseRoute.distance/1000).toFixed(1)} km`);
+        return;
+      }
+    }
+    const WAVE = 3;
+    let tried = 0;
+    while (tried < MAX_TRIES){
+      $("genLabel").textContent = `Essais ${tried+1}–${Math.min(tried+WAVE, MAX_TRIES)}/${MAX_TRIES}…`;
+      // Une vague = 3 candidats en parallèle (orientations et sens variés)
+      const batch = [];
+      for (let k=0; k<WAVE && tried+k < MAX_TRIES; k++){
+        const rot = (k === 0) ? rotation : Math.random()*360;
+        const d   = (k % 2 === 0) ? dir : -dir;
+        batch.push((async () => {
+          let rand = circleWaypoints(cLat, cLng, radius, nRand, rot);
+          rand = biasWaypoints(rand, green, cLat, cLng, radius);
+          const wps = orderAround(cLat, cLng, start, [...vias, ...rand], d);
+          return cleanRoute(await osrmRoute([start, ...wps, start]), vias);
+        })());
+      }
+      const results = await Promise.allSettled(batch);
+      tried += batch.length;
+
+      let waveClosest = null;
+      for (const r of results){
+        if (r.status !== "fulfilled") continue;
+        const route = r.value;
+        const errM = Math.abs(route.distance - target);
+        const ov  = overlapRatio(route.geometry.coordinates);
+        // Score global : écart de distance relatif + forte pénalité dès 4 % d'aller-retour
+        const score = errM/target + Math.max(0, ov - 0.04) * 3;
+        if (!best || score < best.score) best = { route, score, errM, ov };
+        if (waveClosest === null || errM < Math.abs(waveClosest - target)) waveClosest = route.distance;
+      }
+      if (best && best.errM <= TOL_M && best.ov <= 0.12) break;
+      // Ajustement proportionnel du rayon d'après le meilleur essai de la vague
+      if (waveClosest !== null)
+        radius *= Math.min(1.6, Math.max(0.55, target/waveClosest));
+      rotation = Math.random()*360;
+      dir = -dir;
+    }
+    if (!best) throw new Error("Aucun itinéraire calculable");
+    displayRoute(best.route, [lat,lng]);
+    if (best.errM > TOL_M)
+      toast(`Réseau trop clairsemé ici : ${(best.route.distance/1000).toFixed(2)} km obtenus (cible ${targetKm} km ±0,2)`);
+    if (usedFallbackRouter)
+      toast("⚠ Serveur piéton indisponible — itinéraire calculé en profil routier, chemins et sentiers ignorés");
+  }catch(err){
+    console.error(err);
+    toast("Impossible de calculer un itinéraire ici. Réessayez ou déplacez le départ.");
+  }finally{
+    generating = false;
+    $("genBtn").classList.remove("busy");
+    $("genLabel").textContent = "Générer la boucle";
+    $("rerollBtn").disabled = !currentRoute;
+  }
+}
+
+function displayRoute(route, start){
+  if (routeLayer) map.removeLayer(routeLayer);
+  const geojson = { type:"Feature", properties:{}, geometry: route.geometry };
+  routeLayer = L.geoJSON(geojson, {
+    style:{ color:"#E8490F", weight:5, opacity:.92, lineCap:"round", lineJoin:"round" }
+  }).addTo(map);
+  decorateRoute(route.geometry.coordinates);
+  map.fitBounds(routeLayer.getBounds(), { padding:[40, 40], paddingBottomRight:[40, 220] });
+
+  currentRoute = { geojson, distance: route.distance, gain: null, elev: null, start,
+                   name: "Boucle " + (route.distance/1000).toFixed(1) + " km" };
+  $("stats").classList.add("on");
+  $("statDist").innerHTML = (route.distance/1000).toFixed(2) + " <small>km</small>";
+  $("statElev").textContent = "…";
+  $("elevChart").hidden = true;
+  updateTime();
+  $("saveBtn").disabled = false;
+  $("rerollBtn").disabled = false;
+  $("gpxBtn").disabled = false;
+
+  // Indicateur de propreté de la boucle
+  const ov = overlapRatio(route.geometry.coordinates);
+  const q = $("quality");
+  q.hidden = false;
+  q.textContent = ov <= 0.04
+    ? "Boucle propre — quasi aucun passage doublé"
+    : `Tracé doublé sur ~${Math.round(ov*100)} % — touchez ⟳ pour tenter mieux`;
+
+  fetchElevation(route.geometry.coordinates)
+    .then(res => {
+      currentRoute.gain = res.gain;
+      currentRoute.elev = res;
+      $("statElev").innerHTML = Math.round(res.gain) + " <small>m</small>";
+      drawElevChart(route.geometry.coordinates, res);
+    })
+    .catch(() => { $("statElev").textContent = "n/d"; });
+}
+
+/* ---- profil altimétrique (SVG) ---- */
+function drawElevChart(lineCoords, res){
+  const xs = [0]; let acc = 0;
+  for (let k=1; k<res.idx.length; k++){
+    for (let i=res.idx[k-1]+1; i<=res.idx[k]; i++)
+      acc += haversine([lineCoords[i-1][1],lineCoords[i-1][0]], [lineCoords[i][1],lineCoords[i][0]]);
+    xs.push(acc);
+  }
+  if (acc <= 0) return;
+  const W = 560, H = 60, P = 4;
+  const min = Math.min(...res.ele), max = Math.max(...res.ele);
+  const span = Math.max(10, max - min);          // au moins 10 m d'amplitude visuelle
+  const X = d => P + (W - 2*P) * d / acc;
+  const Y = e => H - P - (H - 2*P) * (e - min) / span;
+  let path = `M${X(0).toFixed(1)},${Y(res.ele[0]).toFixed(1)}`;
+  for (let k=1; k<res.ele.length; k++) path += ` L${X(xs[k]).toFixed(1)},${Y(res.ele[k]).toFixed(1)}`;
+  const area = path + ` L${X(acc).toFixed(1)},${H-P} L${X(0).toFixed(1)},${H-P} Z`;
+  $("elevChart").innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Profil altimétrique">` +
+    `<path d="${area}" fill="rgba(232,73,15,.13)"/>` +
+    `<path d="${path}" fill="none" stroke="#E8490F" stroke-width="2"/></svg>` +
+    `<div class="elev-labels"><span>min ${Math.round(min)} m</span><span>max ${Math.round(max)} m</span></div>`;
+  $("elevChart").hidden = false;
+}
+
+/* ---- dénivelé : Open-Elevation, repli Open-Meteo (sans clé, très stable) ---- */
+async function fetchElevation(lineCoords){
+  const step = Math.max(1, Math.floor(lineCoords.length / 60));
+  const idx = [];
+  for (let i=0; i<lineCoords.length; i+=step) idx.push(i);
+  if (idx[idx.length-1] !== lineCoords.length-1) idx.push(lineCoords.length-1);
+  const pts = idx.map(i => lineCoords[i]);
+
+  let el = null;
+  try{
+    const r = await fetch(ELEVATION, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ locations: pts.map(c => ({ latitude:c[1], longitude:c[0] })) })
+    });
+    if (r.ok){
+      const j = await r.json();
+      if (j.results && j.results.length) el = j.results.map(p => p.elevation);
+    }
+  }catch{}
+
+  if (!el){
+    const lats = pts.map(c => c[1].toFixed(5)).join(",");
+    const lngs = pts.map(c => c[0].toFixed(5)).join(",");
+    const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`);
+    if (!r.ok) throw new Error("elevation");
+    const j = await r.json();
+    el = j.elevation;
+  }
+  if (!el || !el.length) throw new Error("elevation");
+
+  let gain = 0;
+  for (let i=1; i<el.length; i++){
+    const d = el[i]-el[i-1];
+    if (d > 1) gain += d;      // seuil 1 m pour lisser le bruit
+  }
+  return { gain, idx, ele: el };
+}
+
+/* ---- temps estimé selon l'allure ---- */
+function parsePace(str){
+  const m = String(str).trim().match(/^(\d{1,2})(?::([0-5]?\d))?$/);
+  if (!m) return null;
+  return parseInt(m[1],10) + (m[2] ? parseInt(m[2],10)/60 : 0);
+}
+function updateTime(){
+  if (!currentRoute) return;
+  const pace = parsePace($("paceInput").value);
+  if (!pace) { $("statTime").textContent = "–"; return; }
+  const totalMin = (currentRoute.distance/1000) * pace;
+  const h = Math.floor(totalMin/60), mn = Math.round(totalMin%60);
+  $("statTime").innerHTML = h > 0
+    ? `${h}<small>h</small>${String(mn).padStart(2,"0")}`
+    : `${mn} <small>min</small>`;
+  savePrefs();
+}
+$("paceInput").addEventListener("change", updateTime);
+$("distInput").addEventListener("change", savePrefs);
+
+function savePrefs(){
+  try{ localStorage.setItem(LS_PREFS, JSON.stringify({ dist:$("distInput").value, pace:$("paceInput").value, mode:runMode })); }catch{}
+}
+(function loadPrefs(){
+  try{
+    const p = JSON.parse(localStorage.getItem(LS_PREFS) || "null");
+    if (p){
+      $("distInput").value = p.dist || "8";
+      $("paceInput").value = p.pace || "5:30";
+      if (p.mode){
+        runMode = p.mode;
+        document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x.dataset.mode === runMode));
+      }
+    }
+  }catch{}
+})();
+
+$("genBtn").addEventListener("click", () => generateLoop(false));
+$("rerollBtn").addEventListener("click", () => generateLoop(true));
+
+/* ================= Export GPX (Zepp / Amazfit T-Rex 2) ================= */
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function toGPX(geojson, name, elev){
+  const coords = geojson.geometry.coordinates;
+  let eleAt = null;
+  if (elev && elev.idx && elev.ele && elev.idx.length === elev.ele.length){
+    eleAt = i => {
+      const { idx, ele } = elev;
+      let k = 0;
+      while (k < idx.length-1 && idx[k+1] < i) k++;
+      if (k >= idx.length-1 || idx[k] >= i) return ele[Math.min(k, ele.length-1)];
+      const t = (i - idx[k]) / (idx[k+1] - idx[k]);
+      return ele[k] + (ele[k+1] - ele[k]) * t;
+    };
+  }
+  const pts = coords
+    .map((c,i) => `      <trkpt lat="${c[1].toFixed(6)}" lon="${c[0].toFixed(6)}">` +
+                  (eleAt ? `<ele>${eleAt(i).toFixed(1)}</ele>` : "") + `</trkpt>`)
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Boucle" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>${esc(name)}</name><time>${new Date().toISOString()}</time></metadata>
+  <trk>
+    <name>${esc(name)}</name>
+    <trkseg>
+${pts}
+    </trkseg>
+  </trk>
+</gpx>`;
+}
+
+function downloadGPX(geojson, name, elev){
+  const file = name.toLowerCase().replace(/[^a-z0-9à-ÿ]+/gi,"-").replace(/^-|-$/g,"") || "boucle";
+  const blob = new Blob([toGPX(geojson, name, elev)], { type:"application/gpx+xml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = file + ".gpx";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("GPX exporté — ouvrez-le avec l'app Zepp");
+}
+
+$("gpxBtn").addEventListener("click", () => {
+  if (currentRoute) downloadGPX(currentRoute.geojson, currentRoute.name || "Boucle", currentRoute.elev);
+});
+
+/* ================= Favoris (LocalStorage) ================= */
+function getFavs(){ try{ return JSON.parse(localStorage.getItem(LS_FAVS) || "[]"); }catch{ return []; } }
+function setFavs(v){
+  try{ localStorage.setItem(LS_FAVS, JSON.stringify(v)); }
+  catch{ toast("Stockage plein : supprimez d'anciens favoris"); }
+}
+
+$("saveBtn").addEventListener("click", () => {
+  if (!currentRoute) return;
+  const km = (currentRoute.distance/1000).toFixed(1);
+  const name = prompt("Nom du parcours :", `Boucle ${km} km`);
+  if (name === null) return;
+  const favs = getFavs();
+  favs.unshift({
+    id: Date.now(),
+    name: name.trim() || `Boucle ${km} km`,
+    date: new Date().toISOString().slice(0,10),
+    distance: currentRoute.distance,
+    gain: currentRoute.gain,
+    elev: currentRoute.elev,
+    start: currentRoute.start,
+    geojson: currentRoute.geojson,
+    target: parseFloat($("distInput").value) || null,
+    mode: runMode,
+    vias: viaMarkers.map(m => { const p = m.getLatLng(); return [p.lat, p.lng]; })
+  });
+  setFavs(favs);
+  toast("Parcours ajouté aux favoris ★");
+  renderFavs();
+});
+
+function renderFavs(){
+  const favs = getFavs();
+  const list = $("favList");
+  list.innerHTML = "";
+  if (!favs.length){
+    list.innerHTML = '<div class="empty">Aucun parcours enregistré.<br>Générez une boucle puis touchez ★.</div>';
+    return;
+  }
+  for (const f of favs){
+    const row = document.createElement("div");
+    row.className = "fav";
+    const gain = (f.gain != null) ? ` · ${Math.round(f.gain)} m D+` : "";
+    row.innerHTML = `
+      <div class="fav-info">
+        <b title="Toucher pour renommer"></b>
+        <span>${(f.distance/1000).toFixed(2)} km${gain} · ${f.date}</span>
+      </div>
+      <button class="load">Charger</button>
+      <button class="load gpx">GPX</button>
+      <button class="load var" title="Recréer une variante avec les mêmes réglages">⟳ Variante</button>
+      <button class="del" aria-label="Supprimer">✕</button>`;
+    row.querySelector("b").textContent = f.name;
+    row.querySelector("b").addEventListener("click", () => {
+      const nn = prompt("Renommer le parcours :", f.name);
+      if (nn === null) return;
+      const all = getFavs();
+      const it = all.find(x => x.id === f.id);
+      if (it){ it.name = nn.trim() || it.name; setFavs(all); renderFavs(); }
+    });
+    row.querySelector(".load:not(.gpx):not(.var)").addEventListener("click", () => loadFav(f));
+    row.querySelector(".gpx").addEventListener("click", () => downloadGPX(f.geojson, f.name, f.elev));
+    row.querySelector(".var").addEventListener("click", () => {
+      closeFavs();
+      if (f.target) $("distInput").value = f.target;
+      if (f.mode){
+        runMode = f.mode;
+        document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x.dataset.mode === runMode));
+      }
+      viaMarkers.forEach(m => map.removeLayer(m));
+      viaMarkers = [];
+      (f.vias || []).forEach(v => addVia(v[0], v[1]));
+      setStart(f.start[0], f.start[1], true);
+      generateLoop();
+    });
+    row.querySelector(".del").addEventListener("click", () => {
+      if (!confirm(`Supprimer « ${f.name} » ?`)) return;
+      setFavs(getFavs().filter(x => x.id !== f.id));
+      renderFavs();
+    });
+    list.appendChild(row);
+  }
+}
+
+function loadFav(f){
+  closeFavs();
+  if (routeLayer) map.removeLayer(routeLayer);
+  routeLayer = L.geoJSON(f.geojson, {
+    style:{ color:"#E8490F", weight:5, opacity:.92, lineCap:"round", lineJoin:"round" }
+  }).addTo(map);
+  decorateRoute(f.geojson.geometry.coordinates);
+  map.fitBounds(routeLayer.getBounds(), { padding:[40,40], paddingBottomRight:[40,220] });
+  setStart(f.start[0], f.start[1], false);
+  currentRoute = { geojson:f.geojson, distance:f.distance, gain:f.gain, elev:f.elev || null, start:f.start, name:f.name };
+  $("stats").classList.add("on");
+  $("statDist").innerHTML = (f.distance/1000).toFixed(2) + " <small>km</small>";
+  $("statElev").innerHTML = (f.gain != null) ? Math.round(f.gain) + " <small>m</small>" : "n/d";
+  if (f.elev && f.elev.idx) drawElevChart(f.geojson.geometry.coordinates, f.elev);
+  else $("elevChart").hidden = true;
+  const ov = overlapRatio(f.geojson.geometry.coordinates);
+  $("quality").hidden = false;
+  $("quality").textContent = ov <= 0.04
+    ? "Boucle propre — quasi aucun passage doublé"
+    : `Tracé doublé sur ~${Math.round(ov*100)} %`;
+  updateTime();
+  $("saveBtn").disabled = true;      // déjà enregistré
+  $("rerollBtn").disabled = false;
+  $("gpxBtn").disabled = false;
+}
+
+const favPanel = $("favPanel");
+function closeFavs(){ favPanel.classList.remove("open"); }
+$("favOpenBtn").addEventListener("click", () => { renderFavs(); favPanel.classList.add("open"); });
+$("favCloseBtn").addEventListener("click", closeFavs);
+
+/* ================= Panneau repliable ================= */
+$("grab").addEventListener("click", () => $("sheet").classList.toggle("folded"));
+
+/* ================= Position initiale ================= */
+// Pas de géolocalisation automatique : la carte s'ouvre sur la France entière,
+// le bouton ◎ recentre sur la position quand on le demande.
+renderFavs();
+</script>
+</body>
+</html>
