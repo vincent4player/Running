@@ -81,6 +81,21 @@
   .search-results button:last-child{border-bottom:0}
   .search-results button:active{background:var(--field)}
 
+  .home-row{
+    position:fixed;z-index:19;
+    top:calc(var(--sat) + 66px);left:12px;
+    display:flex;gap:8px;
+  }
+  .home-btn{
+    display:flex;align-items:center;gap:8px;
+    background:var(--pine);color:#fff;border-radius:999px;
+    padding:0 16px;height:42px;box-shadow:var(--shadow);
+    font-size:13.5px;font-variation-settings:"wght" 700;
+  }
+  .home-btn:active{transform:scale(.96)}
+  .home-ico{font-size:16px}
+  .icon-btn.small{width:42px;height:42px;font-size:16px}
+
   /* ---------- panneau bas ---------- */
   .sheet{
     position:fixed;z-index:15;left:0;right:0;bottom:0;
@@ -96,7 +111,14 @@
     width:44px;height:5px;border-radius:99px;background:var(--line);
     margin:0 auto 4px;
   }
-  .sheet-head{display:flex;align-items:baseline;justify-content:space-between;padding:4px 2px 10px}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 10px;gap:10px}
+  .sheet-head .sheet-title{flex:none}
+  .sheet-head .sheet-hint{flex:1}
+  .collapse-btn{
+    flex:none;width:34px;height:34px;border-radius:10px;background:var(--field);
+    font-size:16px;color:var(--ink-soft);transition:transform .25s ease;
+  }
+  .sheet.folded .collapse-btn{transform:rotate(180deg)}
   .sheet-title{
     font-variation-settings:"wdth" 122,"wght" 800;
     text-transform:uppercase;letter-spacing:.04em;font-size:15px;
@@ -267,12 +289,21 @@
 </div>
 <div class="search-results" id="searchResults"></div>
 
+<div class="home-row" id="homeRow">
+  <button class="home-btn" id="homeBtn">
+    <span class="home-ico">⌂</span>
+    <span id="homeLabel">Définir « Maison »</span>
+  </button>
+  <button class="icon-btn small" id="homeEditBtn" title="Modifier l'adresse Maison" aria-label="Modifier" hidden>✎</button>
+</div>
+
 <!-- Panneau principal -->
 <section class="sheet" id="sheet">
   <div class="grab" id="grab"></div>
   <div class="sheet-head">
     <div class="sheet-title">Nouvelle boucle</div>
     <div class="sheet-hint" id="startHint">Touchez la carte pour placer le départ</div>
+    <button class="collapse-btn" id="collapseBtn" title="Réduire le panneau" aria-label="Réduire le panneau">▾</button>
   </div>
 
   <div class="start-chips" id="startChips"></div>
@@ -480,6 +511,37 @@ $("searchForm").addEventListener("submit", async e => {
 document.addEventListener("click", e => {
   if (!resultsEl.contains(e.target) && e.target.id !== "searchInput")
     resultsEl.classList.remove("open");
+});
+
+/* ================= Maison (départ + génération en un geste) ================= */
+const LS_HOME = "boucle.home.v1";
+function getHome(){ try{ return JSON.parse(localStorage.getItem(LS_HOME) || "null"); }catch{ return null; } }
+function setHome(v){ try{ localStorage.setItem(LS_HOME, JSON.stringify(v)); }catch{} }
+
+function renderHome(){
+  const home = getHome();
+  $("homeLabel").textContent = home ? "Maison" : "Définir « Maison »";
+  $("homeEditBtn").hidden = !home;
+}
+renderHome();
+
+function saveCurrentAsHome(){
+  if (!startMarker) return toast("Placez d'abord un départ (carte, recherche ou ◎), puis touchez Maison");
+  const p = startMarker.getLatLng();
+  setHome({ lat: p.lat, lng: p.lng });
+  renderHome();
+  toast("Maison enregistrée ⌂ — un tap la relancera directement");
+}
+
+$("homeBtn").addEventListener("click", () => {
+  const home = getHome();
+  if (!home){ saveCurrentAsHome(); return; }
+  setStart(home.lat, home.lng, true);
+  generateLoop();
+});
+$("homeEditBtn").addEventListener("click", () => {
+  if (!confirm("Remplacer « Maison » par le départ actuellement placé sur la carte ?")) return;
+  saveCurrentAsHome();
 });
 
 /* ================= Départs favoris ================= */
@@ -1154,6 +1216,7 @@ $("favCloseBtn").addEventListener("click", closeFavs);
 
 /* ================= Panneau repliable ================= */
 $("grab").addEventListener("click", () => $("sheet").classList.toggle("folded"));
+$("collapseBtn").addEventListener("click", () => $("sheet").classList.toggle("folded"));
 
 /* ================= Position initiale ================= */
 // Pas de géolocalisation automatique : la carte s'ouvre sur la France entière,
