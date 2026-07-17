@@ -146,7 +146,7 @@
   .sheet.compact .compact-hide{display:none}
   .sheet.compact .controls{margin-bottom:2px}
   #compactBtn.on{background:var(--pine);color:#fff}
-  .compact-only{display:none;gap:8px;padding-bottom:10px}
+  .compact-only{display:none}
   .sheet.compact .compact-only{display:flex}
   .grab{
     width:44px;height:5px;border-radius:99px;background:var(--line);
@@ -430,10 +430,6 @@
   </div>
 
   <div class="start-chips" id="startChips"></div>
-  <div class="compact-only" id="compactVias">
-    <button class="chip" id="viaBtnC">＋ Passage</button>
-    <button class="chip" id="quietBtnC">🤫 Calme</button>
-  </div>
 
   <div class="controls">
     <div class="field">
@@ -706,6 +702,7 @@ map.on("click", e => {
 /* ---- points de passage obligés ---- */
 let viaMarkers = [];
 let viaMode = false;
+let quietStreets = false;   // évite les grands axes en modes Mixte/Route (déclaré tôt : référencé par renderStartChips)
 
 function viaIcon(n){
   return L.divIcon({ className:"", html:`<div class="via-pin">${n}</div>`,
@@ -736,7 +733,6 @@ $("viaBtn").addEventListener("click", () => {
     ? "Touchez la carte : chaque appui ajoute un passage"
     : (startMarker ? "Départ placé ✓" : "Touchez la carte pour placer le départ");
 });
-$("viaBtnC").addEventListener("click", () => $("viaBtn").click());
 $("viaClearBtn").addEventListener("click", () => {
   viaMarkers.forEach(m => map.removeLayer(m));
   viaMarkers = [];
@@ -857,12 +853,29 @@ function renderStartChips(){
     toast("Départ retenu ☆");
   });
   el.appendChild(add);
+
+  // Jumeaux compacts (Passage obligé / Rues calmes), visibles seulement en
+  // mode épuré, sur la MÊME ligne que les puces de départ plutôt qu'en dessous.
+  // Recréés à chaque appel (comme le reste de la ligne) : les gestionnaires
+  // sont donc rattachés ici plutôt qu'une fois pour toutes au chargement.
+  const viaC = document.createElement("button");
+  viaC.className = "schip compact-only" + (viaMode ? " on" : "");
+  viaC.id = "viaBtnC";
+  viaC.textContent = "＋ Passage";
+  viaC.addEventListener("click", () => $("viaBtn").click());
+  el.appendChild(viaC);
+
+  const quietC = document.createElement("button");
+  quietC.className = "schip compact-only" + (quietStreets ? " on" : "");
+  quietC.id = "quietBtnC";
+  quietC.textContent = "🤫 Calme";
+  quietC.addEventListener("click", () => $("quietBtn").click());
+  el.appendChild(quietC);
 }
 renderStartChips();
 
 /* ================= Mode de course & zones vertes ================= */
 let runMode = "mix";   // mix | trail | road
-let quietStreets = false;   // évite les grands axes en modes Mixte/Route
 document.querySelectorAll(".mode").forEach(b => b.addEventListener("click", () => {
   runMode = b.dataset.mode;
   document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x === b));
@@ -875,7 +888,6 @@ $("quietBtn").addEventListener("click", () => {
   $("quietBtnC").classList.toggle("on", quietStreets);
   savePrefs();
 });
-$("quietBtnC").addEventListener("click", () => $("quietBtn").click());
 
 document.querySelectorAll(".mi").forEach(b => b.addEventListener("click", () => {
   markerIntervalM = parseInt(b.dataset.int, 10);
