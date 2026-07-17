@@ -146,7 +146,11 @@
   .grab{
     width:44px;height:5px;border-radius:99px;background:var(--line);
     margin:0 auto 4px;
+    /* zone de préhension réellement tactile plus grande que le trait visible */
+    box-sizing:content-box;position:relative;padding:10px 0;background-clip:content-box;
+    touch-action:none;cursor:grab;
   }
+  .grab:active{cursor:grabbing}
   .sheet-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 10px;gap:10px}
   .sheet-head .sheet-title{flex:none}
   .sheet-head .sheet-hint{flex:1}
@@ -261,10 +265,21 @@
   .stat b small{font-size:13px;font-variation-settings:"wdth" 100,"wght" 600;color:var(--ink-soft)}
   .stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
   .stat.blaze b{color:var(--blaze-ink)}
+  #statElev.warn{color:var(--blaze-ink)}
   .elev-chart{margin-top:8px}
   .elev-chart svg{display:block;width:100%;height:52px;border-radius:8px;background:var(--field)}
   .elev-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);margin-top:2px}
   .quality{font-size:11.5px;color:var(--ink-soft);margin-top:8px;text-align:center}
+  .stats-head{display:flex;justify-content:flex-end;margin-top:12px}
+  .unit-toggle{
+    background:var(--field);border-radius:999px;padding:5px 12px;
+    font-size:11px;font-variation-settings:"wght" 700;color:var(--ink-soft);
+  }
+  .share-chip{
+    display:block;margin:10px auto 0;background:var(--field);
+    padding:9px 16px;border-radius:999px;font-size:12.5px;
+    font-variation-settings:"wght" 700;color:var(--ink);
+  }
 
   /* ---------- favoris ---------- */
   .panel{
@@ -320,6 +335,16 @@
     font-size:12px;font-variation-settings:"wght" 700;color:var(--ink-soft);white-space:nowrap;
   }
   .run-btn.done{background:var(--pine);color:#fff}
+
+  .week-chart{padding:4px 2px 14px;border-bottom:1px solid var(--line);margin-bottom:4px}
+  .week-chart .wc-bars{display:flex;align-items:flex-end;gap:10px;height:64px}
+  .week-chart .wc-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+  .week-chart .wc-bar{width:100%;border-radius:5px 5px 2px 2px;background:var(--blaze);min-height:3px}
+  .week-chart .wc-lbl{font-size:10px;color:var(--ink-soft);margin-top:6px}
+  .week-chart .wc-val{font-size:10px;color:var(--ink-soft);margin-bottom:3px;font-variant-numeric:tabular-nums}
+
+  .fav-label-row{display:flex;align-items:center;justify-content:space-between}
+  .mini-link{font-size:11.5px;color:var(--pine);font-variation-settings:"wght" 700;text-decoration:underline}
 
   /* ---------- toast & loader ---------- */
   .toast{
@@ -447,6 +472,9 @@
     <button class="btn btn-pine" id="saveBtn" title="Ajouter aux favoris" aria-label="Ajouter aux favoris" disabled>★</button>
   </div>
 
+  <div class="stats-head">
+    <button class="unit-toggle" id="unitBtn">km</button>
+  </div>
   <div class="stats" id="stats">
     <div class="stat blaze"><b id="statDist">–</b><span>Distance</span></div>
     <div class="stat"><b id="statElev">–</b><span>Dénivelé +</span></div>
@@ -454,6 +482,7 @@
   </div>
   <div class="elev-chart" id="elevChart" hidden></div>
   <div class="quality" id="quality" hidden></div>
+  <button class="chip share-chip" id="shareBtn" hidden>↗ Partager (Google Maps)</button>
 </section>
 
 <!-- Favoris -->
@@ -463,11 +492,15 @@
     <button class="icon-btn" id="favCloseBtn" aria-label="Fermer" style="box-shadow:none;background:var(--field)">✕</button>
   </div>
   <div class="run-summary" id="runSummary" hidden></div>
+  <div class="week-chart" id="weekChart" hidden></div>
   <div class="recent-section" id="recentSection" hidden>
     <div class="section-label">Récentes (non enregistrées)</div>
     <div class="recent-row" id="recentRow"></div>
   </div>
-  <div class="section-label">Favoris</div>
+  <div class="section-label fav-label-row">
+    <span>Favoris</span>
+    <button class="mini-link" id="exportAllBtn">Tout exporter (GPX)</button>
+  </div>
   <div class="fav-list" id="favList"></div>
 </aside>
 
@@ -546,8 +579,8 @@ function renderRecent(){
   for (const r of arr){
     const c = document.createElement("button");
     c.className = "recent-chip";
-    const gain = (r.gain != null) ? ` · ${Math.round(r.gain)} m D+` : "";
-    c.innerHTML = `<b></b><span>${(r.distance/1000).toFixed(2)} km${gain}</span>`;
+    const gain = (r.gain != null) ? ` · ${fmtElevGain(r.gain)} D+` : "";
+    c.innerHTML = `<b></b><span>${fmtDist(r.distance)}${gain}</span>`;
     c.querySelector("b").textContent = r.name;
     c.addEventListener("click", () => loadFav(r, false));   // même format que les favoris, mais pas encore sauvegardée
     row.appendChild(c);
@@ -571,11 +604,39 @@ L.control.zoom({ position:"topright" }).addTo(map);
 
 let startMarker = null, routeLayer = null, meMarker = null;
 let nightOverride = null;   // null = auto (selon l'heure), true/false = forcé par l'utilisateur
+let unitSystem = "km";      // km | mi — affichage uniquement ; distance cible et allure restent en km en interne
 let currentRoute = null;   // { geojson, distance, gain, start:[lat,lng] }
 let generating = false;
 
 const $ = id => document.getElementById(id);
 const toastEl = $("toast");
+
+/* ---- unité d'affichage km/mi : purement présentationnel, tous les calculs
+   internes (target, allure, OSRM…) restent en mètres/km ---- */
+function fmtDist(m){
+  return unitSystem === "mi"
+    ? (m / 1609.344).toFixed(2) + " mi"
+    : (m / 1000).toFixed(2) + " km";
+}
+function fmtElevGain(m){
+  return unitSystem === "mi"
+    ? Math.round(m * 3.28084) + " ft"
+    : Math.round(m) + " m";
+}
+function applyUnit(){
+  $("unitBtn").textContent = unitSystem;
+  if (currentRoute){
+    $("statDist").innerHTML = fmtDist(currentRoute.distance).replace(/(km|mi)$/, "<small>$1</small>");
+    if (currentRoute.gain != null)
+      $("statElev").innerHTML = fmtElevGain(currentRoute.gain).replace(/(m|ft)$/, "<small>$1</small>");
+  }
+  renderFavs();   // réaffiche favoris/récentes/résumé dans la nouvelle unité
+}
+$("unitBtn").addEventListener("click", () => {
+  unitSystem = unitSystem === "km" ? "mi" : "km";
+  applyUnit();
+  savePrefs();
+});
 let toastTimer;
 
 /* ---- mode nuit : auto selon l'heure locale (heuristique simple, sans API
@@ -1000,25 +1061,33 @@ function pointSegProj(p, a, b){
    Un point qui revient sur le segment précédent = retour en arrière → on annule.
    Les pointes à moins de 60 m d'un passage obligé sont protégées. ---- */
 function pruneSpurs(lineCoords, protectLatLng){
+  const TOL = 22;   // tolérance élargie : capte les doublons même légèrement décalés
   const prot = c => protectLatLng.some(v => haversine([c[1],c[0]], v) < 60);
   const near = (a,b,m) => haversine([a[1],a[0]], [b[1],b[0]]) < m;
   let pts = lineCoords, rounds = 0, changed = true;
-  while (changed && rounds++ < 4){
+  while (changed && rounds++ < 6){
     changed = false;
     const out = [];
     for (const p of pts){
       let guard = 0;
+      // Cas particulier : tout début de tracé, un seul point accumulé — on ne peut
+      // comparer qu'à ce point unique (pas encore de segment A→B à projeter dessus).
+      // Sans ce cas, un aller-retour survenant juste après le départ (ex. une impasse
+      // prise dès la première rue) passait sous le radar faute de recul suffisant.
+      while (out.length === 1 && !prot(out[0]) && near(p, out[0], TOL)){
+        out.pop(); changed = true;
+      }
       while (out.length >= 2 && guard++ < 2000 && !prot(out[out.length-1])){
         const A = out[out.length-2], B = out[out.length-1];
-        const back = near(p, A, 8);                       // p est revenu sur A
+        const back = near(p, A, TOL);                       // p est revenu sur A
         const onSeg = !back && (() => {
           const pr = pointSegProj(p, A, B);
-          return pr.d < 8 && pr.t < 0.98 && !near(p, B, 2);   // p recule le long de A→B
+          return pr.d < TOL && pr.t < 0.98 && !near(p, B, 4);   // p recule le long de A→B
         })();
         if (back || onSeg){ out.pop(); changed = true; }
         else break;
       }
-      if (!out.length || !near(out[out.length-1], p, 1.5)) out.push(p);
+      if (!out.length || !near(out[out.length-1], p, 3)) out.push(p);
       else changed = true;
     }
     if (out.length < 4) break;
@@ -1151,7 +1220,7 @@ async function generateLoop(reroll){
         // Score global : écart de distance relatif + forte pénalité dès 4 % d'aller-retour
         const score = errM/target + Math.max(0, ov - 0.04) * 3;
         if (!best || score < best.score) best = { route, score, errM, ov };
-        if (errM <= TOL_M && ov <= 0.12) qualified.push({ route, errM, ov });
+        if (errM <= TOL_M && ov <= 0.09) qualified.push({ route, errM, ov });
         if (waveClosest === null || errM < Math.abs(waveClosest - target)) waveClosest = route.distance;
       }
       // Dès qu'on a au moins 2 boucles valables (ou qu'on a fait 2 vagues), on peut
@@ -1198,13 +1267,14 @@ function displayRoute(route, start){
                    name: "Boucle " + (route.distance/1000).toFixed(1) + " km",
                    recentId: Date.now() };
   $("stats").classList.add("on");
-  $("statDist").innerHTML = (route.distance/1000).toFixed(2) + " <small>km</small>";
+  $("statDist").innerHTML = fmtDist(route.distance).replace(/(km|mi)$/, "<small>$1</small>");
   $("statElev").textContent = "…";
   $("elevChart").hidden = true;
   updateTime();
   $("saveBtn").disabled = false;
   $("rerollBtn").disabled = false;
   $("gpxBtn").disabled = false;
+  $("shareBtn").hidden = false;
 
   pushRecent({
     id: currentRoute.recentId, name: currentRoute.name, distance: currentRoute.distance,
@@ -1223,13 +1293,42 @@ function displayRoute(route, start){
     .then(res => {
       currentRoute.gain = res.gain;
       currentRoute.elev = res;
-      $("statElev").innerHTML = Math.round(res.gain) + " <small>m</small>";
+      $("statElev").innerHTML = fmtElevGain(res.gain).replace(/(m|ft)$/, "<small>$1</small>");
       drawElevChart(route.geometry.coordinates, res);
       colorizeSlopeOverlay(route.geometry.coordinates, res);
       updateRecentElev(currentRoute.recentId, res.gain, res);
+
+      // Alerte si le dénivelé est nettement plus important que la moyenne
+      const perKm = res.gain / (route.distance/1000);
+      $("statElev").classList.toggle("warn", perKm >= 25);
+      if (perKm >= 25)
+        toast(`⚠ Dénivelé conséquent : ${Math.round(res.gain)} m sur ${(route.distance/1000).toFixed(1)} km (~${Math.round(perKm)} m/km)`);
     })
     .catch(() => { $("statElev").textContent = "n/d"; });
 }
+
+/* ---- partage : lien Google Maps (mode piéton) construit à partir d'un
+   échantillon de points du tracé, via l'API de partage native si dispo ---- */
+function buildMapsShareLink(coords){
+  const maxPts = 20;
+  const step = Math.max(1, Math.floor(coords.length / maxPts));
+  const pts = [];
+  for (let i=0; i<coords.length; i+=step) pts.push(coords[i]);
+  if (pts[pts.length-1] !== coords[coords.length-1]) pts.push(coords[coords.length-1]);
+  const path = pts.map(c => `${c[1].toFixed(5)},${c[0].toFixed(5)}`).join("/");
+  return `https://www.google.com/maps/dir/${path}/data=!4m2!4m1!3e2`;
+}
+$("shareBtn").addEventListener("click", async () => {
+  if (!currentRoute) return;
+  const url = buildMapsShareLink(currentRoute.geojson.geometry.coordinates);
+  const text = `Ma boucle de course : ${(currentRoute.distance/1000).toFixed(1)} km`;
+  if (navigator.share){
+    try{ await navigator.share({ title:"Boucle", text, url }); }catch{ /* annulé par l'utilisateur */ }
+  } else {
+    try{ await navigator.clipboard.writeText(url); toast("Lien Google Maps copié dans le presse-papiers"); }
+    catch{ window.open(url, "_blank"); }
+  }
+});
 
 /* ---- profil altimétrique (SVG) ---- */
 function drawElevChart(lineCoords, res){
@@ -1324,7 +1423,7 @@ $("distInput").addEventListener("change", savePrefs);
 function savePrefs(){
   try{ localStorage.setItem(LS_PREFS, JSON.stringify({
     dist:$("distInput").value, paceMin:$("paceMin").value, paceSec:$("paceSec").value,
-    mode:runMode, markerInt:markerIntervalM, night:nightOverride, quiet:quietStreets
+    mode:runMode, markerInt:markerIntervalM, night:nightOverride, quiet:quietStreets, unit:unitSystem
   })); }catch{}
 }
 (function loadPrefs(){
@@ -1344,6 +1443,7 @@ function savePrefs(){
       }
       if (p.night !== undefined) nightOverride = p.night;
       if (p.quiet){ quietStreets = true; $("quietBtn").classList.add("on"); }
+      if (p.unit === "mi"){ unitSystem = "mi"; applyUnit(); }
     }
   }catch{}
 })();
@@ -1432,9 +1532,19 @@ function setFavs(v){
 $("saveBtn").addEventListener("click", () => {
   if (!currentRoute) return;
   const km = (currentRoute.distance/1000).toFixed(1);
+  const favs = getFavs();
+  const dup = favs.find(f =>
+    haversine(f.start, currentRoute.start) < 150 &&
+    Math.abs(f.distance - currentRoute.distance) / currentRoute.distance < 0.10
+  );
+  if (dup){
+    const go = confirm(
+      `Un parcours similaire existe déjà : « ${dup.name} » (${(dup.distance/1000).toFixed(1)} km, même départ à peu près).\n\nL'ajouter quand même ?`
+    );
+    if (!go) return;
+  }
   const name = prompt("Nom du parcours :", `Boucle ${km} km`);
   if (name === null) return;
-  const favs = getFavs();
   favs.unshift({
     id: Date.now(),
     name: name.trim() || `Boucle ${km} km`,
@@ -1471,11 +1581,11 @@ function renderFavs(){
   for (const f of favs){
     const row = document.createElement("div");
     row.className = "fav";
-    const gain = (f.gain != null) ? ` · ${Math.round(f.gain)} m D+` : "";
+    const gain = (f.gain != null) ? ` · ${fmtElevGain(f.gain)} D+` : "";
     row.innerHTML = `
       <div class="fav-info">
         <b title="Toucher pour renommer"></b>
-        <span>${(f.distance/1000).toFixed(2)} km${gain} · ${f.date}${fmtRunInfo(f)}</span>
+        <span>${fmtDist(f.distance)}${gain} · ${f.date}${fmtRunInfo(f)}</span>
       </div>
       <button class="load">Charger</button>
       <button class="load gpx">GPX</button>
@@ -1532,23 +1642,66 @@ function renderFavs(){
 function renderRunSummary(favs){
   const el = $("runSummary");
   const now = Date.now(), DAY = 86400000;
-  let km7 = 0, km30 = 0, hasAny = false;
+  let m7 = 0, m30 = 0, hasAny = false;
+  const weeksM = [0, 0, 0, 0];   // en mètres : [semaine en cours .. il y a 3 semaines]
   for (const f of favs){
     for (const d of (f.runs || [])){
       const t = new Date(d + "T12:00:00").getTime();
       if (isNaN(t)) continue;
       hasAny = true;
       const ageDays = (now - t) / DAY;
-      if (ageDays <= 30) km30 += f.distance/1000;
-      if (ageDays <= 7)  km7  += f.distance/1000;
+      if (ageDays <= 30) m30 += f.distance;
+      if (ageDays <= 7)  m7  += f.distance;
+      const w = Math.floor(ageDays / 7);
+      if (w >= 0 && w < 4) weeksM[w] += f.distance;
     }
   }
-  if (!hasAny){ el.hidden = true; return; }
+  if (!hasAny){ el.hidden = true; $("weekChart").hidden = true; return; }
+  const unitLabel = unitSystem === "mi" ? "mi" : "km";
+  const conv = m => unitSystem === "mi" ? m / 1609.344 : m / 1000;
   el.hidden = false;
   el.innerHTML = `
-    <div class="rs"><b>${km7.toFixed(1)}</b><span>km · 7 derniers jours</span></div>
-    <div class="rs"><b>${km30.toFixed(1)}</b><span>km · 30 derniers jours</span></div>`;
+    <div class="rs"><b>${conv(m7).toFixed(1)}</b><span>${unitLabel} · 7 derniers jours</span></div>
+    <div class="rs"><b>${conv(m30).toFixed(1)}</b><span>${unitLabel} · 30 derniers jours</span></div>`;
+
+  // Graphique des 4 dernières semaines (barres, la plus récente à droite)
+  const wc = $("weekChart");
+  const ordered = [weeksM[3], weeksM[2], weeksM[1], weeksM[0]].map(conv);
+  const labels = ["-3 sem.", "-2 sem.", "-1 sem.", "Cette sem."];
+  const max = Math.max(1, ...ordered);
+  wc.hidden = false;
+  wc.innerHTML = `<div class="wc-bars">` + ordered.map((v,i) => `
+    <div class="wc-col">
+      <span class="wc-val">${v > 0 ? v.toFixed(1) : ""}</span>
+      <div class="wc-bar" style="height:${Math.max(3, v/max*100)}%"></div>
+      <span class="wc-lbl">${labels[i]}</span>
+    </div>`).join("") + `</div>`;
 }
+
+/* ---- export groupé : un seul fichier GPX contenant une trace par favori.
+   Valide en GPX (plusieurs <trk> par fichier), mais certaines montres/apps
+   n'importent que la première trace d'un fichier multi-traces — à vérifier
+   selon votre matériel. ---- */
+$("exportAllBtn").addEventListener("click", () => {
+  const favs = getFavs();
+  if (!favs.length) return toast("Aucun favori à exporter");
+  const tracks = favs.map(f => {
+    const eleAt = makeElevInterpolator(f.elev);
+    const pts = f.geojson.geometry.coordinates
+      .map((c,i) => `      <trkpt lat="${c[1].toFixed(6)}" lon="${c[0].toFixed(6)}">` +
+                    (eleAt ? `<ele>${eleAt(i).toFixed(1)}</ele>` : "") + `</trkpt>`)
+      .join("\n");
+    return `  <trk>\n    <name>${esc(f.name)}</name>\n    <trkseg>\n${pts}\n    </trkseg>\n  </trk>`;
+  }).join("\n");
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Boucle" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>Mes parcours</name><time>${new Date().toISOString()}</time></metadata>\n${tracks}\n</gpx>`;
+  const blob = new Blob([gpx], { type:"application/gpx+xml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "mes-parcours.gpx";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast(`${favs.length} parcours exportés dans un seul fichier GPX`);
+});
 
 function loadFav(f, alreadySaved){
   if (alreadySaved === undefined) alreadySaved = true;
@@ -1562,8 +1715,8 @@ function loadFav(f, alreadySaved){
   setStart(f.start[0], f.start[1], false);
   currentRoute = { geojson:f.geojson, distance:f.distance, gain:f.gain, elev:f.elev || null, start:f.start, name:f.name };
   $("stats").classList.add("on");
-  $("statDist").innerHTML = (f.distance/1000).toFixed(2) + " <small>km</small>";
-  $("statElev").innerHTML = (f.gain != null) ? Math.round(f.gain) + " <small>m</small>" : "n/d";
+  $("statDist").innerHTML = fmtDist(f.distance).replace(/(km|mi)$/, "<small>$1</small>");
+  $("statElev").innerHTML = (f.gain != null) ? fmtElevGain(f.gain).replace(/(m|ft)$/, "<small>$1</small>") : "n/d";
   if (f.elev && f.elev.idx){ drawElevChart(f.geojson.geometry.coordinates, f.elev); colorizeSlopeOverlay(f.geojson.geometry.coordinates, f.elev); }
   else { $("elevChart").hidden = true; if (slopeLayer){ map.removeLayer(slopeLayer); slopeLayer = null; } }
   const ov = overlapRatio(f.geojson.geometry.coordinates);
@@ -1575,6 +1728,11 @@ function loadFav(f, alreadySaved){
   $("saveBtn").disabled = alreadySaved;      // déjà enregistré si chargé depuis les favoris
   $("rerollBtn").disabled = false;
   $("gpxBtn").disabled = false;
+  $("shareBtn").hidden = false;
+  if (f.gain != null){
+    const perKm = f.gain / (f.distance/1000);
+    $("statElev").classList.toggle("warn", perKm >= 25);
+  }
 }
 
 const favPanel = $("favPanel");
@@ -1583,8 +1741,51 @@ $("favOpenBtn").addEventListener("click", () => { renderFavs(); favPanel.classLi
 $("favCloseBtn").addEventListener("click", closeFavs);
 
 /* ================= Panneau repliable ================= */
-$("grab").addEventListener("click", () => $("sheet").classList.toggle("folded"));
 $("collapseBtn").addEventListener("click", () => $("sheet").classList.toggle("folded"));
+
+/* ---- glisser la poignée pour replier/déplier le panneau, au doigt comme
+   à la souris (Pointer Events unifie les deux). Suivi progressif du doigt
+   pendant le geste, puis accroche (snap) sur l'état ouvert ou replié. ---- */
+(function enableSheetDrag(){
+  const sheet = $("sheet"), handle = $("grab");
+  let dragging = false, startY = 0, startTranslate = 0, sheetH = 0;
+
+  function foldedOffset(){ return Math.max(0, sheetH - 58); }
+  function currentTranslate(){ return sheet.classList.contains("folded") ? foldedOffset() : 0; }
+
+  function onDown(e){
+    dragging = true;
+    sheetH = sheet.offsetHeight;
+    startY = e.clientY;
+    startTranslate = currentTranslate();
+    sheet.style.transition = "none";
+    if (handle.setPointerCapture) handle.setPointerCapture(e.pointerId);
+  }
+  function onMove(e){
+    if (!dragging) return;
+    const dy = Math.max(0, Math.min(foldedOffset(), startTranslate + (e.clientY - startY)));
+    sheet.style.transform = `translateY(${dy}px)`;
+  }
+  function onUp(e){
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = "";
+    const moved = Math.abs(e.clientY - startY);
+    if (moved < 6){
+      // simple tap, sans glissement réel : bascule classique
+      sheet.style.transform = "";
+      sheet.classList.toggle("folded");
+      return;
+    }
+    const dy = Math.max(0, Math.min(foldedOffset(), startTranslate + (e.clientY - startY)));
+    sheet.style.transform = "";
+    sheet.classList.toggle("folded", dy > foldedOffset() * 0.35);
+  }
+  handle.addEventListener("pointerdown", onDown);
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+})();
 
 /* ================= Réinitialiser la carte ================= */
 function resetMap(){
@@ -1612,6 +1813,7 @@ function resetMap(){
   $("saveBtn").disabled = true;
   $("rerollBtn").disabled = true;
   $("gpxBtn").disabled = true;
+  $("shareBtn").hidden = true;
   $("startHint").textContent = "Touchez la carte pour placer le départ";
   $("searchInput").value = "";
   $("searchResults").classList.remove("open");
