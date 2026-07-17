@@ -128,10 +128,22 @@
     background:var(--paper);
     border-radius:22px 22px 0 0;
     box-shadow:0 -8px 32px rgba(16,20,24,.18);
-    padding:14px 16px calc(var(--sab) + 14px);
+    padding:14px 16px 0;
     max-width:520px;margin:0 auto;
     transition:transform .25s ease;
+    /* Plafond de hauteur : le panneau ne doit jamais grimper assez haut
+       pour chevaucher la barre de recherche / le bouton Maison, qui sont
+       fixes en haut d'écran. Au-delà, le contenu défile en interne. */
+    max-height:calc(100dvh - var(--sat) - 150px);
+    display:flex;flex-direction:column;
   }
+  .sheet-scroll{
+    flex:1 1 auto;min-height:0;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:calc(var(--sab) + 14px);
+  }
+  .grab, .sheet-head{flex:none}
   /* Prolonge le fond blanc du panneau sous le bord bas de l'écran : si iOS
      laisse apparaître une zone résiduelle (bug de viewport en mode app),
      elle est recouverte en blanc au lieu de montrer une bande grise. */
@@ -429,6 +441,7 @@
     <button class="collapse-btn" id="collapseBtn" title="Réduire le panneau" aria-label="Réduire le panneau">▾</button>
   </div>
 
+  <div class="sheet-scroll" id="sheetScroll">
   <div class="start-chips" id="startChips"></div>
 
   <div class="controls">
@@ -492,6 +505,7 @@
   <div class="elev-chart compact-hide" id="elevChart" hidden></div>
   <div class="quality compact-hide" id="quality" hidden></div>
   <button class="chip share-chip compact-hide" id="shareBtn" hidden>↗ Partager (Google Maps)</button>
+  </div>
 </section>
 
 <!-- Favoris -->
