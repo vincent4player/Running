@@ -806,7 +806,6 @@ $("homeBtn").addEventListener("click", () => {
   const home = getHome();
   if (!home){ saveCurrentAsHome(); return; }
   setStart(home.lat, home.lng, true);
-  generateLoop();
 });
 $("homeEditBtn").addEventListener("click", () => {
   if (!confirm("Remplacer « Maison » par le départ actuellement placé sur la carte ?")) return;
@@ -1073,42 +1072,43 @@ function overlapRatio(lineCoords){
   return dup / Math.max(1, seen.size);
 }
 
-/* ---- excision des antennes : à chaque nouveau point, on regarde si le
-   tracé revient près d'un point déjà visité RÉCEMMENT (fenêtre glissante,
-   pas seulement le tout dernier point) — si oui, tout ce qui a été fait
-   "pour rien" entre les deux est retiré. Ça couvre en un seul mécanisme :
-   l'aller-retour simple, le détour à plusieurs points intermédiaires
-   (impasse avec un coude, lacet autour d'un étang…), et le cas où ça
-   survient dès le tout début du tracé. Un passage obligé stoppe la
-   recherche en arrière : on ne coupe jamais à travers lui. Le tout DERNIER
-   point (qui referme la boucle sur le départ) est exclu de cette recherche :
-   sinon il "matcherait" systématiquement le point de départ et effacerait
-   tout le reste du parcours à chaque génération. ---- */
+/* ---- excision des antennes : pour chaque point, on cherche EN AVANT (pas en
+   arrière) le point le plus ÉLOIGNÉ dans une fenêtre qui revient près de lui
+   — si trouvé, tout ce qu'il y a entre les deux est une excursion "pour
+   rien" et saute d'un coup. Chercher le plus éloigné (pas le plus proche)
+   est essentiel sur une rue longue et densément échantillonnée : revenir
+   "pas à pas" ne matcherait toujours qu'un point tout proche d'un cran,
+   sans jamais faire le grand saut qui élimine toute l'excursion. Un passage
+   obligé (vérifié en O(1) via un précalcul) bloque tout saut qui passerait
+   à travers lui. Le tout dernier point (clôture de la boucle) est intouché. ---- */
 function pruneSpurs(lineCoords, protectLatLng){
-  const TOL = 22;      // tolérance élargie : capte les doublons même légèrement décalés
-  const WINDOW = 60;   // profondeur de recherche en arrière (points)
-  const prot = c => protectLatLng.some(v => haversine([c[1],c[0]], v) < 60);
+  const TOL = 22;
+  const LOOKAHEAD = 400;
   const near = (a,b,m) => haversine([a[1],a[0]], [b[1],b[0]]) < m;
   let pts = lineCoords, rounds = 0, changed = true;
   while (changed && rounds++ < 6){
     changed = false;
+    const n = pts.length;
+    // nextProtected[k] = plus petit indice >= k dont le point est protégé, sinon Infinity
+    const nextProtected = new Array(n + 1).fill(Infinity);
+    for (let k = n - 1; k >= 0; k--){
+      const isP = protectLatLng.some(v => haversine([pts[k][1], pts[k][0]], v) < 60);
+      nextProtected[k] = isP ? k : nextProtected[k + 1];
+    }
     const out = [];
-    for (let i = 0; i < pts.length; i++){
+    let i = 0;
+    while (i < n){
       const p = pts[i];
-      if (i < pts.length - 1){
-        const lo = Math.max(0, out.length - WINDOW);
-        let cut = -1;
-        for (let k = out.length - 1; k >= lo; k--){
-          if (prot(out[k])) break;         // ne jamais couper à travers un passage obligé
-          if (near(out[k], p, TOL)){ cut = k; break; }
-        }
-        if (cut >= 0 && cut < out.length - 1){
-          out.length = cut + 1;
-          changed = true;
-        }
+      if (i === n - 1){ out.push(p); i++; continue; }   // clôture de la boucle : jamais retouchée
+      const hi = Math.min(n - 2, i + LOOKAHEAD);
+      let jumpTo = -1;
+      for (let j = hi; j > i; j--){
+        if (nextProtected[i + 1] < j) continue;   // un passage obligé se trouve entre i et j : on ne saute pas par-dessus
+        if (near(pts[j], p, TOL)){ jumpTo = j; break; }
       }
-      if (!out.length || !near(out[out.length-1], p, 3)) out.push(p);
-      else changed = true;
+      out.push(p);
+      if (jumpTo > i){ i = jumpTo + 1; changed = true; }
+      else i++;
     }
     if (out.length < 4) break;
     pts = out;
