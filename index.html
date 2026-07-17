@@ -1336,6 +1336,13 @@ function displayRoute(route, start){
   $("gpxBtn").disabled = false;
   $("shareBtn").hidden = false;
 
+  // Fait défiler le panneau (qui peut désormais contenir plus que ce qui
+  // tient à l'écran) pour amener les résultats en vue, sans que l'utilisateur
+  // ait à chercher où ils sont passés.
+  requestAnimationFrame(() => {
+    $("stats").scrollIntoView({ behavior:"smooth", block:"nearest" });
+  });
+
   pushRecent({
     id: currentRoute.recentId, name: currentRoute.name, distance: currentRoute.distance,
     start, geojson, gain: null, elev: null
@@ -1795,6 +1802,9 @@ function loadFav(f, alreadySaved){
     const perKm = f.gain / (f.distance/1000);
     $("statElev").classList.toggle("warn", perKm >= 25);
   }
+  requestAnimationFrame(() => {
+    $("stats").scrollIntoView({ behavior:"smooth", block:"nearest" });
+  });
 }
 
 const favPanel = $("favPanel");
