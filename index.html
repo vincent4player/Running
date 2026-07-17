@@ -1770,13 +1770,9 @@ $("collapseBtn").addEventListener("click", () => $("sheet").classList.toggle("fo
     if (!dragging) return;
     dragging = false;
     sheet.style.transition = "";
-    const moved = Math.abs(e.clientY - startY);
-    if (moved < 6){
-      // simple tap, sans glissement réel : bascule classique
-      sheet.style.transform = "";
-      sheet.classList.toggle("folded");
-      return;
-    }
+    // Un simple tap (sans déplacement réel) ne fait plus rien : il faut
+    // maintenir puis glisser pour replier/déplier. Le bouton ▾ reste
+    // disponible pour un basculement en un tap si besoin.
     const dy = Math.max(0, Math.min(foldedOffset(), startTranslate + (e.clientY - startY)));
     sheet.style.transform = "";
     sheet.classList.toggle("folded", dy > foldedOffset() * 0.35);
