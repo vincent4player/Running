@@ -587,8 +587,10 @@ function renderRecent(){
   }
 }
 const LS_PREFS  = "boucle.prefs.v1";
-const TOL_M     = 200;    // ±200 m sur la distance cible
+const TOL_M     = 200;    // cible idéale : ±200 m si le réseau le permet
+const TOL_MAX_M = 500;    // plafond garanti : on insiste tant qu'on est au-delà
 const MAX_TRIES = 12;
+const MAX_RESCUE_TRIES = 8;   // tentatives supplémentaires dédiées à la distance si besoin
 
 /* ================= Carte ================= */
 const map = L.map("map", { zoomControl:false }).setView([46.6, 2.4], 6);   // France entière
@@ -1042,50 +1044,39 @@ function overlapRatio(lineCoords){
   return dup / Math.max(1, seen.size);
 }
 
-/* ---- projection d'un point sur un segment (coords GeoJSON [lng,lat]) ----
-   Retourne d = distance en mètres au segment, t = position le long (0=A, 1=B) */
-function pointSegProj(p, a, b){
-  const lat0 = a[1]*Math.PI/180, kx = Math.cos(lat0)*111320, ky = 110540;
-  const px = (p[0]-a[0])*kx, py = (p[1]-a[1])*ky;
-  const bx = (b[0]-a[0])*kx, by = (b[1]-a[1])*ky;
-  const L2 = bx*bx + by*by;
-  if (!L2) return { d: Math.hypot(px, py), t: 0 };
-  const t = (px*bx + py*by) / L2;
-  const tc = Math.max(0, Math.min(1, t));
-  return { d: Math.hypot(px - tc*bx, py - tc*by), t };
-}
-
-/* ---- excision des antennes : retire les allers-retours du tracé.
-   Comparaison GÉOMÉTRIQUE (tolérance 8 m), pas exacte : l'aller et le retour
-   d'un même chemin peuvent être décrits avec des sommets différents par OSRM.
-   Un point qui revient sur le segment précédent = retour en arrière → on annule.
-   Les pointes à moins de 60 m d'un passage obligé sont protégées. ---- */
+/* ---- excision des antennes : à chaque nouveau point, on regarde si le
+   tracé revient près d'un point déjà visité RÉCEMMENT (fenêtre glissante,
+   pas seulement le tout dernier point) — si oui, tout ce qui a été fait
+   "pour rien" entre les deux est retiré. Ça couvre en un seul mécanisme :
+   l'aller-retour simple, le détour à plusieurs points intermédiaires
+   (impasse avec un coude, lacet autour d'un étang…), et le cas où ça
+   survient dès le tout début du tracé. Un passage obligé stoppe la
+   recherche en arrière : on ne coupe jamais à travers lui. Le tout DERNIER
+   point (qui referme la boucle sur le départ) est exclu de cette recherche :
+   sinon il "matcherait" systématiquement le point de départ et effacerait
+   tout le reste du parcours à chaque génération. ---- */
 function pruneSpurs(lineCoords, protectLatLng){
-  const TOL = 22;   // tolérance élargie : capte les doublons même légèrement décalés
+  const TOL = 22;      // tolérance élargie : capte les doublons même légèrement décalés
+  const WINDOW = 60;   // profondeur de recherche en arrière (points)
   const prot = c => protectLatLng.some(v => haversine([c[1],c[0]], v) < 60);
   const near = (a,b,m) => haversine([a[1],a[0]], [b[1],b[0]]) < m;
   let pts = lineCoords, rounds = 0, changed = true;
   while (changed && rounds++ < 6){
     changed = false;
     const out = [];
-    for (const p of pts){
-      let guard = 0;
-      // Cas particulier : tout début de tracé, un seul point accumulé — on ne peut
-      // comparer qu'à ce point unique (pas encore de segment A→B à projeter dessus).
-      // Sans ce cas, un aller-retour survenant juste après le départ (ex. une impasse
-      // prise dès la première rue) passait sous le radar faute de recul suffisant.
-      while (out.length === 1 && !prot(out[0]) && near(p, out[0], TOL)){
-        out.pop(); changed = true;
-      }
-      while (out.length >= 2 && guard++ < 2000 && !prot(out[out.length-1])){
-        const A = out[out.length-2], B = out[out.length-1];
-        const back = near(p, A, TOL);                       // p est revenu sur A
-        const onSeg = !back && (() => {
-          const pr = pointSegProj(p, A, B);
-          return pr.d < TOL && pr.t < 0.98 && !near(p, B, 4);   // p recule le long de A→B
-        })();
-        if (back || onSeg){ out.pop(); changed = true; }
-        else break;
+    for (let i = 0; i < pts.length; i++){
+      const p = pts[i];
+      if (i < pts.length - 1){
+        const lo = Math.max(0, out.length - WINDOW);
+        let cut = -1;
+        for (let k = out.length - 1; k >= lo; k--){
+          if (prot(out[k])) break;         // ne jamais couper à travers un passage obligé
+          if (near(out[k], p, TOL)){ cut = k; break; }
+        }
+        if (cut >= 0 && cut < out.length - 1){
+          out.length = cut + 1;
+          changed = true;
+        }
       }
       if (!out.length || !near(out[out.length-1], p, 3)) out.push(p);
       else changed = true;
@@ -1233,14 +1224,40 @@ async function generateLoop(reroll){
       rotation = Math.random()*360;
       dir = -dir;
     }
+
+    // Phase de secours : si on est encore à plus de 500 m de la cible malgré
+    // les tentatives normales, on insiste avec des essais supplémentaires
+    // concentrés uniquement sur la distance (on laisse de côté le critère de
+    // repli le temps de se rapprocher), en ajustant le rayon plus franchement.
+    if (best && Math.abs(best.route.distance - target) > TOL_MAX_M){
+      for (let t = 0; t < MAX_RESCUE_TRIES && Math.abs(best.route.distance - target) > TOL_MAX_M; t++){
+        $("genLabel").textContent = `Ajustement de la distance… (${t+1}/${MAX_RESCUE_TRIES})`;
+        try{
+          let rand = circleWaypoints(cLat, cLng, radius, nRandBase, Math.random()*360);
+          rand = biasWaypoints(rand, green, cLat, cLng, radius);
+          rand = avoidBusyRoads(rand, busy, cLat, cLng, radius);
+          const wps = orderAround(cLat, cLng, start, [...vias, ...rand], dir);
+          const route = cleanRoute(await osrmRoute([start, ...wps, start]), vias);
+          const errM = Math.abs(route.distance - target);
+          const ov = overlapRatio(route.geometry.coordinates);
+          const score = errM/target + Math.max(0, ov - 0.04) * 3;
+          if (errM < best.errM) best = { route, score, errM, ov };
+          radius *= Math.min(1.8, Math.max(0.5, target / route.distance));
+          dir = -dir;
+        }catch{ /* on continue avec les tentatives suivantes malgré l'échec ponctuel */ }
+      }
+    }
+
     const picked = qualified.length
       ? qualified[Math.floor(Math.random()*qualified.length)]
       : best;
     if (!picked) throw new Error("Aucun itinéraire calculable");
     displayRoute(picked.route, [lat,lng]);
     if (navigator.vibrate) navigator.vibrate(60);   // pas d'effet sur iOS Safari (API non supportée), inoffensif
-    if (picked.errM > TOL_M)
-      toast(`Réseau trop clairsemé ici : ${(picked.route.distance/1000).toFixed(2)} km obtenus (cible ${targetKm} km ±0,2)`);
+    if (picked.errM > TOL_MAX_M)
+      toast(`⚠ Réseau très clairsemé ici : ${(picked.route.distance/1000).toFixed(2)} km obtenus malgré plusieurs tentatives (cible ${targetKm} km)`);
+    else if (picked.errM > TOL_M)
+      toast(`${(picked.route.distance/1000).toFixed(2)} km obtenus (cible ${targetKm} km, écart sous 500 m)`);
     if (usedFallbackRouter)
       toast("⚠ Serveur piéton indisponible — itinéraire calculé en profil routier, chemins et sentiers ignorés");
   }catch(err){
