@@ -36,12 +36,23 @@
     --sat:env(safe-area-inset-top,0px);
     --sab:env(safe-area-inset-bottom,0px);
   }
+  /* Mode nuit : mêmes variables, palette sombre. Le orange/vert d'accent
+     restent identiques (garde l'identité visuelle et le contraste voulu).
+     Appliqué sur <html> (pas body) pour que le fond de html:{--paper} en profite aussi. */
+  html.night{
+    --ink:#EDEFEF;
+    --ink-soft:#9AA3AA;
+    --paper:#171B1F;
+    --field:#242A30;
+    --line:#333B42;
+    --shadow:0 8px 28px rgba(0,0,0,.5);
+  }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   html{
     height:100%;
-    height:100dvh;                 /* hauteur dynamique : suit la barre d'outils iOS */
+    height:100dvh;
     overscroll-behavior:none;
-    background:var(--paper);       /* toute zone résiduelle en bas sera blanche, fondue au panneau */
+    background:var(--paper);
   }
   body{
     position:fixed;
@@ -188,6 +199,12 @@
     font-variation-settings:"wght" 700;color:var(--ink-soft);
   }
   .mode.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 4px rgba(16,20,24,.12)}
+  .marker-int{display:flex;gap:6px}
+  .mi{
+    background:var(--field);border-radius:999px;padding:6px 12px;
+    font-size:12px;font-variation-settings:"wght" 700;color:var(--ink-soft);
+  }
+  .mi.on{background:var(--pine);color:#fff}
   .start-chips{
     display:flex;gap:8px;overflow-x:auto;padding:0 2px 10px;
     -webkit-overflow-scrolling:touch;scrollbar-width:none;
@@ -275,6 +292,35 @@
   .fav .del{color:var(--blaze-ink);font-size:17px;padding:8px}
   .empty{color:var(--ink-soft);text-align:center;margin-top:40px;font-size:14px;line-height:1.6}
 
+  .run-summary{
+    display:flex;gap:18px;padding:12px 4px 16px;margin-bottom:4px;
+    border-bottom:1px solid var(--line);
+  }
+  .run-summary .rs{flex:1}
+  .run-summary b{
+    display:block;font-size:22px;line-height:1.1;
+    font-variation-settings:"wdth" 116,"wght" 800;font-variant-numeric:tabular-nums;
+  }
+  .run-summary span{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-soft)}
+
+  .section-label{
+    font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);
+    font-variation-settings:"wght" 700;margin:10px 2px 8px;
+  }
+  .recent-section{margin-bottom:6px}
+  .recent-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .recent-chip{
+    flex:none;background:var(--field);border-radius:14px;padding:10px 14px;min-width:120px;
+  }
+  .recent-chip b{display:block;font-size:14px;font-variation-settings:"wght" 700}
+  .recent-chip span{font-size:11.5px;color:var(--ink-soft)}
+
+  .run-btn{
+    background:var(--field);border-radius:10px;padding:8px 12px;
+    font-size:12px;font-variation-settings:"wght" 700;color:var(--ink-soft);white-space:nowrap;
+  }
+  .run-btn.done{background:var(--pine);color:#fff}
+
   /* ---------- toast & loader ---------- */
   .toast{
     position:fixed;z-index:40;left:50%;transform:translateX(-50%) translateY(20px);
@@ -305,6 +351,9 @@
     font-size:11px;font-variation-settings:"wght" 800;color:var(--blaze-ink);
     box-shadow:0 1px 4px rgba(0,0,0,.35);
   }
+  .km-dot-mini{
+    width:10px;height:10px;border:2px solid var(--blaze);background:#fff;
+  }
   .dir-arrow{
     font-size:15px;line-height:1;color:#fff;
     text-shadow:0 0 2px var(--blaze-ink),0 0 2px var(--blaze-ink),0 0 3px var(--blaze-ink);
@@ -334,6 +383,7 @@
     <span id="homeLabel">Définir « Maison »</span>
   </button>
   <button class="icon-btn small" id="homeEditBtn" title="Modifier l'adresse Maison" aria-label="Modifier" hidden>✎</button>
+  <button class="icon-btn small" id="nightBtn" title="Mode nuit" aria-label="Mode nuit">☾</button>
 </div>
 
 <!-- Panneau principal -->
@@ -374,6 +424,20 @@
     <button class="chip danger" id="viaClearBtn" hidden>Effacer</button>
   </div>
 
+  <div class="vias">
+    <button class="chip" id="quietBtn">🤫 Rues calmes</button>
+    <span class="via-info">évite les grands axes (Mixte/Route)</span>
+  </div>
+
+  <div class="vias">
+    <span class="via-info" style="flex:none">Bornes</span>
+    <div class="marker-int" id="markerInt">
+      <button class="mi on" data-int="1000">1 km</button>
+      <button class="mi" data-int="500">500 m</button>
+      <button class="mi" data-int="200">200 m</button>
+    </div>
+  </div>
+
   <div class="actions">
     <button class="btn btn-blaze" id="genBtn">
       <span class="spin"></span><span class="btn-label" id="genLabel">Générer la boucle</span>
@@ -398,6 +462,12 @@
     <h2>Mes parcours</h2>
     <button class="icon-btn" id="favCloseBtn" aria-label="Fermer" style="box-shadow:none;background:var(--field)">✕</button>
   </div>
+  <div class="run-summary" id="runSummary" hidden></div>
+  <div class="recent-section" id="recentSection" hidden>
+    <div class="section-label">Récentes (non enregistrées)</div>
+    <div class="recent-row" id="recentRow"></div>
+  </div>
+  <div class="section-label">Favoris</div>
   <div class="fav-list" id="favList"></div>
 </aside>
 
@@ -450,25 +520,87 @@ const ROUTERS = [
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const ELEVATION = "https://api.open-elevation.com/api/v1/lookup";
 const LS_FAVS   = "boucle.favs.v1";
+const LS_RECENT = "boucle.recent.v1";
+
+function getRecent(){ try{ return JSON.parse(localStorage.getItem(LS_RECENT) || "[]"); }catch{ return []; } }
+function setRecent(v){ try{ localStorage.setItem(LS_RECENT, JSON.stringify(v)); }catch{} }
+function pushRecent(entry){
+  let arr = getRecent();
+  arr.unshift(entry);
+  arr = arr.slice(0, 3);
+  setRecent(arr);
+  renderRecent();
+}
+function updateRecentElev(id, gain, elev){
+  const arr = getRecent();
+  const it = arr.find(x => x.id === id);
+  if (it){ it.gain = gain; it.elev = elev; setRecent(arr); }
+}
+function renderRecent(){
+  const arr = getRecent();
+  const section = $("recentSection");
+  section.hidden = !arr.length;
+  if (!arr.length) return;
+  const row = $("recentRow");
+  row.innerHTML = "";
+  for (const r of arr){
+    const c = document.createElement("button");
+    c.className = "recent-chip";
+    const gain = (r.gain != null) ? ` · ${Math.round(r.gain)} m D+` : "";
+    c.innerHTML = `<b></b><span>${(r.distance/1000).toFixed(2)} km${gain}</span>`;
+    c.querySelector("b").textContent = r.name;
+    c.addEventListener("click", () => loadFav(r, false));   // même format que les favoris, mais pas encore sauvegardée
+    row.appendChild(c);
+  }
+}
 const LS_PREFS  = "boucle.prefs.v1";
 const TOL_M     = 200;    // ±200 m sur la distance cible
 const MAX_TRIES = 12;
 
 /* ================= Carte ================= */
 const map = L.map("map", { zoomControl:false }).setView([46.6, 2.4], 6);   // France entière
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const lightTiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-}).addTo(map);
+});
+const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  maxZoom: 19, subdomains: "abcd",
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+});
 L.control.zoom({ position:"topright" }).addTo(map);
 
 let startMarker = null, routeLayer = null, meMarker = null;
+let nightOverride = null;   // null = auto (selon l'heure), true/false = forcé par l'utilisateur
 let currentRoute = null;   // { geojson, distance, gain, start:[lat,lng] }
 let generating = false;
 
 const $ = id => document.getElementById(id);
 const toastEl = $("toast");
 let toastTimer;
+
+/* ---- mode nuit : auto selon l'heure locale (heuristique simple, sans API
+   d'ensoleillement), ou forcé via le bouton lune/soleil ---- */
+function isNightNow(){
+  if (nightOverride !== null) return nightOverride;
+  const h = new Date().getHours();
+  return h < 7 || h >= 21;
+}
+function applyNightMode(){
+  const night = isNightNow();
+  document.documentElement.classList.toggle("night", night);
+  if (night){ if (map.hasLayer(lightTiles)) map.removeLayer(lightTiles); darkTiles.addTo(map); }
+  else      { if (map.hasLayer(darkTiles))  map.removeLayer(darkTiles);  lightTiles.addTo(map); }
+  $("nightBtn").textContent = night ? "☀" : "☾";
+  $("nightBtn").title = night ? "Passer en mode jour" : "Passer en mode nuit";
+}
+$("nightBtn").addEventListener("click", () => {
+  nightOverride = !isNightNow();
+  applyNightMode();
+  savePrefs();
+});
+applyNightMode();
+// Réévalue le mode auto toutes les 10 min (au cas où l'heure franchit un seuil pendant l'usage)
+setInterval(() => { if (nightOverride === null) applyNightMode(); }, 10*60*1000);
 function toast(msg){
   toastEl.textContent = msg;
   toastEl.classList.add("show");
@@ -652,9 +784,23 @@ renderStartChips();
 
 /* ================= Mode de course & zones vertes ================= */
 let runMode = "mix";   // mix | trail | road
+let quietStreets = false;   // évite les grands axes en modes Mixte/Route
 document.querySelectorAll(".mode").forEach(b => b.addEventListener("click", () => {
   runMode = b.dataset.mode;
   document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x === b));
+  savePrefs();
+}));
+
+$("quietBtn").addEventListener("click", () => {
+  quietStreets = !quietStreets;
+  $("quietBtn").classList.toggle("on", quietStreets);
+  savePrefs();
+});
+
+document.querySelectorAll(".mi").forEach(b => b.addEventListener("click", () => {
+  markerIntervalM = parseInt(b.dataset.int, 10);
+  document.querySelectorAll(".mi").forEach(x => x.classList.toggle("on", x === b));
+  if (currentRoute) decorateRoute(currentRoute.geojson.geometry.coordinates);   // re-décore le tracé affiché
   savePrefs();
 }));
 
@@ -680,6 +826,32 @@ async function fetchGreenCenters(lat, lng, radiusM){
   return pts;
 }
 
+// Points le long des grands axes (route Overpass : primaire/secondaire/nationale…)
+let busyCache = { key:null, pts:[] };
+async function fetchBusyRoadPoints(lat, lng, radiusM){
+  const key = lat.toFixed(3) + "," + lng.toFixed(3) + "," + Math.round(radiusM/500);
+  if (busyCache.key === key) return busyCache.pts;
+  const r = Math.round(radiusM * 1.3);
+  const q = `[out:json][timeout:10];(` +
+    `way["highway"~"^(motorway|trunk|primary|secondary)$"](around:${r},${lat},${lng});` +
+    `);out geom 200;`;
+  const resp = await fetch("https://overpass-api.de/api/interpreter", {
+    method:"POST",
+    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+    body:"data=" + encodeURIComponent(q)
+  });
+  const j = await resp.json();
+  // échantillonne quelques points le long de chaque way plutôt que juste son centre
+  const pts = [];
+  for (const e of (j.elements || [])){
+    if (!e.geometry) continue;
+    const step = Math.max(1, Math.floor(e.geometry.length / 4));
+    for (let i=0; i<e.geometry.length; i+=step) pts.push([e.geometry[i].lat, e.geometry[i].lon]);
+  }
+  busyCache = { key, pts };
+  return pts;
+}
+
 // Attire (trail) ou éloigne (road) les points aléatoires des zones vertes
 function biasWaypoints(rand, green, cLat, cLng, radius){
   if (!green.length || runMode === "mix") return rand;
@@ -702,6 +874,19 @@ function biasWaypoints(rand, green, cLat, cLng, radius){
   });
 }
 
+// Éloigne les points aléatoires des grands axes (motorway/trunk/primary/secondary),
+// utilisé en modes Mixte et Route pour privilégier des rues plus calmes.
+function avoidBusyRoads(rand, busy, cLat, cLng, radius){
+  if (!busy.length) return rand;
+  return rand.map(p => {
+    for (let k=0; k<5; k++){
+      if (!busy.some(b => haversine(p, b) < 120)) return p;
+      p = destPoint(cLat, cLng, radius*(0.7 + Math.random()*0.6), Math.random()*360);
+    }
+    return p;   // aucune alternative trouvée en 5 essais : on garde le dernier point
+  });
+}
+
 /* ================= Génération de boucle ================= */
 function destPoint(lat, lng, distM, bearingDeg){
   const R = 6371000, d = distM / R, br = bearingDeg * Math.PI/180;
@@ -712,11 +897,18 @@ function destPoint(lat, lng, distM, bearingDeg){
   return [φ2*180/Math.PI, ((λ2*180/Math.PI)+540)%360-180];
 }
 
+/* ---- points aléatoires disposés en cercle, avec une répartition ORGANIQUE
+   plutôt que régulière : les arcs entre points sont de tailles aléatoires
+   (méthode des espacements de Dirichlet), donnant des boucles tantôt
+   arrondies, tantôt allongées ou tassées d'un côté — plutôt que toujours
+   une même forme presque circulaire simplement pivotée. ---- */
 function circleWaypoints(lat, lng, radius, n, rotation){
+  // n coupures aléatoires sur [0,360) → n arcs de tailles inégales
+  const cuts = Array.from({length:n}, () => Math.random()*360).sort((a,b)=>a-b);
   const pts = [];
   for (let i=0;i<n;i++){
-    const angle = rotation + i*(360/n) + (Math.random()*24-12);   // léger bruit
-    const r = radius * (0.85 + Math.random()*0.3);
+    const angle = rotation + cuts[i] + (Math.random()*20-10);
+    const r = radius * (0.65 + Math.random()*0.7);   // rayon très variable : ±35 %
     pts.push(destPoint(lat, lng, r, angle));
   }
   return pts;
@@ -739,10 +931,12 @@ function bearingDeg(a, b){
 
 /* ---- bornes km + flèches de sens le long du tracé (coords GeoJSON [lng,lat]) ---- */
 let decorLayer = null;
+let markerIntervalM = 1000;   // borne tous les X mètres, réglable (1000/500/200)
 function decorateRoute(lineCoords){
   if (decorLayer) map.removeLayer(decorLayer);
   decorLayer = L.layerGroup().addTo(map);
-  let acc = 0, nextKm = 1000, nextArrow = 400;
+  let acc = 0, nextKm = markerIntervalM, nextArrow = 400;
+  const showNumbers = markerIntervalM >= 500;   // en dessous, trop de pastilles : on garde juste des repères sans numéro
   for (let i=1; i<lineCoords.length; i++){
     const a = [lineCoords[i-1][1], lineCoords[i-1][0]];
     const b = [lineCoords[i][1],   lineCoords[i][0]];
@@ -755,10 +949,13 @@ function decorateRoute(lineCoords){
       nextArrow += 700;
     }
     if (acc >= nextKm){
+      const label = showNumbers
+        ? (markerIntervalM >= 1000 ? Math.round(nextKm/1000) : (nextKm/1000).toFixed(1))
+        : "";
       L.marker(b, { interactive:false, icon: L.divIcon({ className:"",
-        html:`<div class="km-dot">${Math.round(nextKm/1000)}</div>`,
-        iconSize:[22,22], iconAnchor:[11,11] }) }).addTo(decorLayer);
-      nextKm += 1000;
+        html: showNumbers ? `<div class="km-dot">${label}</div>` : `<div class="km-dot km-dot-mini"></div>`,
+        iconSize: showNumbers ? [22,22] : [10,10], iconAnchor: showNumbers ? [11,11] : [5,5] }) }).addTo(decorLayer);
+      nextKm += markerIntervalM;
     }
   }
 }
@@ -884,7 +1081,7 @@ async function generateLoop(reroll){
   const target = targetKm * 1000;
   const vias = viaMarkers.map(m => { const p = m.getLatLng(); return [p.lat, p.lng]; });
   const nWp = targetKm <= 4 ? 3 : targetKm <= 12 ? 4 : 5;
-  const nRand = Math.max(vias.length ? 1 : 3, nWp - vias.length);
+  const nRandBase = Math.max(vias.length ? 1 : 3, nWp - vias.length);
   let rotation = Math.random()*360;
   let dir = Math.random() < 0.5 ? 1 : -1;      // sens de la boucle, aléatoire
 
@@ -907,6 +1104,10 @@ async function generateLoop(reroll){
       if (runMode === "trail" && !green.length)
         toast("Aucune zone boisée trouvée autour du départ — boucle classique générée");
     }
+    // Grands axes à éviter (option "Rues calmes", Mixte et Route uniquement)
+    let busy = [];
+    if (quietStreets && runMode !== "trail")
+      busy = await fetchBusyRoadPoints(cLat, cLng, radius).catch(() => []);
 
     // Si les passages obligés couvrent déjà (ou dépassent) la distance cible,
     // inutile d'ajouter des points aléatoires : on route simplement à travers eux.
@@ -921,16 +1122,19 @@ async function generateLoop(reroll){
     }
     const WAVE = 3;
     let tried = 0;
+    const qualified = [];   // toutes les boucles qui passent les seuils qualité, tous essais confondus
     while (tried < MAX_TRIES){
       $("genLabel").textContent = `Essais ${tried+1}–${Math.min(tried+WAVE, MAX_TRIES)}/${MAX_TRIES}…`;
-      // Une vague = 3 candidats en parallèle (orientations et sens variés)
+      // Une vague = 3 candidats en parallèle (orientations, sens ET forme variés)
       const batch = [];
       for (let k=0; k<WAVE && tried+k < MAX_TRIES; k++){
         const rot = (k === 0) ? rotation : Math.random()*360;
         const d   = (k % 2 === 0) ? dir : -dir;
+        const nRand = Math.max(2, nRandBase + Math.round(Math.random()*2) - 1);   // ±1 point, pour varier la forme
         batch.push((async () => {
           let rand = circleWaypoints(cLat, cLng, radius, nRand, rot);
           rand = biasWaypoints(rand, green, cLat, cLng, radius);
+          rand = avoidBusyRoads(rand, busy, cLat, cLng, radius);
           const wps = orderAround(cLat, cLng, start, [...vias, ...rand], d);
           return cleanRoute(await osrmRoute([start, ...wps, start]), vias);
         })());
@@ -947,19 +1151,27 @@ async function generateLoop(reroll){
         // Score global : écart de distance relatif + forte pénalité dès 4 % d'aller-retour
         const score = errM/target + Math.max(0, ov - 0.04) * 3;
         if (!best || score < best.score) best = { route, score, errM, ov };
+        if (errM <= TOL_M && ov <= 0.12) qualified.push({ route, errM, ov });
         if (waveClosest === null || errM < Math.abs(waveClosest - target)) waveClosest = route.distance;
       }
-      if (best && best.errM <= TOL_M && best.ov <= 0.12) break;
+      // Dès qu'on a au moins 2 boucles valables (ou qu'on a fait 2 vagues), on peut
+      // choisir parmi elles au hasard plutôt que de foncer sur le premier succès :
+      // ça évite de toujours retomber sur "la" boucle la plus efficace du quartier.
+      if (qualified.length >= 2 || (qualified.length >= 1 && tried >= WAVE*2)) break;
       // Ajustement proportionnel du rayon d'après le meilleur essai de la vague
       if (waveClosest !== null)
         radius *= Math.min(1.6, Math.max(0.55, target/waveClosest));
       rotation = Math.random()*360;
       dir = -dir;
     }
-    if (!best) throw new Error("Aucun itinéraire calculable");
-    displayRoute(best.route, [lat,lng]);
-    if (best.errM > TOL_M)
-      toast(`Réseau trop clairsemé ici : ${(best.route.distance/1000).toFixed(2)} km obtenus (cible ${targetKm} km ±0,2)`);
+    const picked = qualified.length
+      ? qualified[Math.floor(Math.random()*qualified.length)]
+      : best;
+    if (!picked) throw new Error("Aucun itinéraire calculable");
+    displayRoute(picked.route, [lat,lng]);
+    if (navigator.vibrate) navigator.vibrate(60);   // pas d'effet sur iOS Safari (API non supportée), inoffensif
+    if (picked.errM > TOL_M)
+      toast(`Réseau trop clairsemé ici : ${(picked.route.distance/1000).toFixed(2)} km obtenus (cible ${targetKm} km ±0,2)`);
     if (usedFallbackRouter)
       toast("⚠ Serveur piéton indisponible — itinéraire calculé en profil routier, chemins et sentiers ignorés");
   }catch(err){
@@ -983,7 +1195,8 @@ function displayRoute(route, start){
   map.fitBounds(routeLayer.getBounds(), { padding:[40, 40], paddingBottomRight:[40, 220] });
 
   currentRoute = { geojson, distance: route.distance, gain: null, elev: null, start,
-                   name: "Boucle " + (route.distance/1000).toFixed(1) + " km" };
+                   name: "Boucle " + (route.distance/1000).toFixed(1) + " km",
+                   recentId: Date.now() };
   $("stats").classList.add("on");
   $("statDist").innerHTML = (route.distance/1000).toFixed(2) + " <small>km</small>";
   $("statElev").textContent = "…";
@@ -992,6 +1205,11 @@ function displayRoute(route, start){
   $("saveBtn").disabled = false;
   $("rerollBtn").disabled = false;
   $("gpxBtn").disabled = false;
+
+  pushRecent({
+    id: currentRoute.recentId, name: currentRoute.name, distance: currentRoute.distance,
+    start, geojson, gain: null, elev: null
+  });
 
   // Indicateur de propreté de la boucle
   const ov = overlapRatio(route.geometry.coordinates);
@@ -1007,6 +1225,8 @@ function displayRoute(route, start){
       currentRoute.elev = res;
       $("statElev").innerHTML = Math.round(res.gain) + " <small>m</small>";
       drawElevChart(route.geometry.coordinates, res);
+      colorizeSlopeOverlay(route.geometry.coordinates, res);
+      updateRecentElev(currentRoute.recentId, res.gain, res);
     })
     .catch(() => { $("statElev").textContent = "n/d"; });
 }
@@ -1103,7 +1323,8 @@ $("distInput").addEventListener("change", savePrefs);
 
 function savePrefs(){
   try{ localStorage.setItem(LS_PREFS, JSON.stringify({
-    dist:$("distInput").value, paceMin:$("paceMin").value, paceSec:$("paceSec").value, mode:runMode
+    dist:$("distInput").value, paceMin:$("paceMin").value, paceSec:$("paceSec").value,
+    mode:runMode, markerInt:markerIntervalM, night:nightOverride, quiet:quietStreets
   })); }catch{}
 }
 (function loadPrefs(){
@@ -1117,6 +1338,12 @@ function savePrefs(){
         runMode = p.mode;
         document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x.dataset.mode === runMode));
       }
+      if (p.markerInt){
+        markerIntervalM = p.markerInt;
+        document.querySelectorAll(".mi").forEach(x => x.classList.toggle("on", parseInt(x.dataset.int,10) === markerIntervalM));
+      }
+      if (p.night !== undefined) nightOverride = p.night;
+      if (p.quiet){ quietStreets = true; $("quietBtn").classList.add("on"); }
     }
   }catch{}
 })();
@@ -1127,19 +1354,43 @@ $("rerollBtn").addEventListener("click", () => generateLoop(true));
 /* ================= Export GPX (Zepp / Amazfit T-Rex 2) ================= */
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
+/* ---- interpolateur d'altitude : elev={idx,ele} (échantillons épars) → fonction(i) qui
+   donne l'altitude estimée à l'indice i de coordonnée du tracé complet ---- */
+function makeElevInterpolator(elev){
+  if (!elev || !elev.idx || !elev.ele || elev.idx.length !== elev.ele.length) return null;
+  const { idx, ele } = elev;
+  return i => {
+    let k = 0;
+    while (k < idx.length-1 && idx[k+1] < i) k++;
+    if (k >= idx.length-1 || idx[k] >= i) return ele[Math.min(k, ele.length-1)];
+    const t = (i - idx[k]) / (idx[k+1] - idx[k]);
+    return ele[k] + (ele[k+1] - ele[k]) * t;
+  };
+}
+
+/* ---- survol coloré des montées sur le tracé : segments plats/descente restent
+   sous l'orange de base, les montées se colorent en rouge plus soutenu selon la pente ---- */
+let slopeLayer = null;
+function colorizeSlopeOverlay(lineCoords, elev){
+  if (slopeLayer){ map.removeLayer(slopeLayer); slopeLayer = null; }
+  const eleAt = makeElevInterpolator(elev);
+  if (!eleAt) return;
+  const group = L.layerGroup();
+  for (let i=1; i<lineCoords.length; i++){
+    const a = lineCoords[i-1], b = lineCoords[i];
+    const distM = haversine([a[1],a[0]], [b[1],b[0]]);
+    if (distM < 1) continue;
+    const slopePct = (eleAt(i) - eleAt(i-1)) / distM * 100;
+    if (slopePct < 3) continue;   // plat ou descente : on laisse l'orange de base visible
+    const color = slopePct >= 6 ? "#7A1D0A" : "#C43D0F";
+    L.polyline([[a[1],a[0]], [b[1],b[0]]], { color, weight:5, opacity:.95, lineCap:"round", lineJoin:"round" }).addTo(group);
+  }
+  slopeLayer = group.addTo(map);
+}
+
 function toGPX(geojson, name, elev){
   const coords = geojson.geometry.coordinates;
-  let eleAt = null;
-  if (elev && elev.idx && elev.ele && elev.idx.length === elev.ele.length){
-    eleAt = i => {
-      const { idx, ele } = elev;
-      let k = 0;
-      while (k < idx.length-1 && idx[k+1] < i) k++;
-      if (k >= idx.length-1 || idx[k] >= i) return ele[Math.min(k, ele.length-1)];
-      const t = (i - idx[k]) / (idx[k+1] - idx[k]);
-      return ele[k] + (ele[k+1] - ele[k]) * t;
-    };
-  }
+  const eleAt = makeElevInterpolator(elev);
   const pts = coords
     .map((c,i) => `      <trkpt lat="${c[1].toFixed(6)}" lon="${c[0].toFixed(6)}">` +
                   (eleAt ? `<ele>${eleAt(i).toFixed(1)}</ele>` : "") + `</trkpt>`)
@@ -1195,12 +1446,20 @@ $("saveBtn").addEventListener("click", () => {
     geojson: currentRoute.geojson,
     target: parseFloat($("distInput").value) || null,
     mode: runMode,
-    vias: viaMarkers.map(m => { const p = m.getLatLng(); return [p.lat, p.lng]; })
+    vias: viaMarkers.map(m => { const p = m.getLatLng(); return [p.lat, p.lng]; }),
+    runs: []   // historique : dates auxquelles cette boucle a été marquée comme courue
   });
   setFavs(favs);
   toast("Parcours ajouté aux favoris ★");
   renderFavs();
 });
+
+function fmtRunInfo(f){
+  const n = (f.runs || []).length;
+  if (!n) return "";
+  const last = f.runs[n-1];
+  return ` · couru ${n}× (dernière le ${last})`;
+}
 
 function renderFavs(){
   const favs = getFavs();
@@ -1208,7 +1467,6 @@ function renderFavs(){
   list.innerHTML = "";
   if (!favs.length){
     list.innerHTML = '<div class="empty">Aucun parcours enregistré.<br>Générez une boucle puis touchez ★.</div>';
-    return;
   }
   for (const f of favs){
     const row = document.createElement("div");
@@ -1217,11 +1475,12 @@ function renderFavs(){
     row.innerHTML = `
       <div class="fav-info">
         <b title="Toucher pour renommer"></b>
-        <span>${(f.distance/1000).toFixed(2)} km${gain} · ${f.date}</span>
+        <span>${(f.distance/1000).toFixed(2)} km${gain} · ${f.date}${fmtRunInfo(f)}</span>
       </div>
       <button class="load">Charger</button>
       <button class="load gpx">GPX</button>
       <button class="load var" title="Recréer une variante avec les mêmes réglages">⟳ Variante</button>
+      <button class="run-btn" title="Marquer comme couru aujourd'hui">✓ Couru</button>
       <button class="del" aria-label="Supprimer">✕</button>`;
     row.querySelector("b").textContent = f.name;
     row.querySelector("b").addEventListener("click", () => {
@@ -1246,6 +1505,17 @@ function renderFavs(){
       setStart(f.start[0], f.start[1], true);
       generateLoop();
     });
+    row.querySelector(".run-btn").addEventListener("click", () => {
+      const all = getFavs();
+      const it = all.find(x => x.id === f.id);
+      if (!it) return;
+      const today = new Date().toISOString().slice(0,10);
+      it.runs = it.runs || [];
+      it.runs.push(today);
+      setFavs(all);
+      toast(`Ajouté à l'historique — ${(f.distance/1000).toFixed(1)} km`);
+      renderFavs();
+    });
     row.querySelector(".del").addEventListener("click", () => {
       if (!confirm(`Supprimer « ${f.name} » ?`)) return;
       setFavs(getFavs().filter(x => x.id !== f.id));
@@ -1253,9 +1523,35 @@ function renderFavs(){
     });
     list.appendChild(row);
   }
+  renderRunSummary(favs);
+  renderRecent();
 }
 
-function loadFav(f){
+/* ---- résumé km courus (7 et 30 derniers jours), calculé à partir des
+   historiques "runs" de tous les favoris ---- */
+function renderRunSummary(favs){
+  const el = $("runSummary");
+  const now = Date.now(), DAY = 86400000;
+  let km7 = 0, km30 = 0, hasAny = false;
+  for (const f of favs){
+    for (const d of (f.runs || [])){
+      const t = new Date(d + "T12:00:00").getTime();
+      if (isNaN(t)) continue;
+      hasAny = true;
+      const ageDays = (now - t) / DAY;
+      if (ageDays <= 30) km30 += f.distance/1000;
+      if (ageDays <= 7)  km7  += f.distance/1000;
+    }
+  }
+  if (!hasAny){ el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="rs"><b>${km7.toFixed(1)}</b><span>km · 7 derniers jours</span></div>
+    <div class="rs"><b>${km30.toFixed(1)}</b><span>km · 30 derniers jours</span></div>`;
+}
+
+function loadFav(f, alreadySaved){
+  if (alreadySaved === undefined) alreadySaved = true;
   closeFavs();
   if (routeLayer) map.removeLayer(routeLayer);
   routeLayer = L.geoJSON(f.geojson, {
@@ -1268,15 +1564,15 @@ function loadFav(f){
   $("stats").classList.add("on");
   $("statDist").innerHTML = (f.distance/1000).toFixed(2) + " <small>km</small>";
   $("statElev").innerHTML = (f.gain != null) ? Math.round(f.gain) + " <small>m</small>" : "n/d";
-  if (f.elev && f.elev.idx) drawElevChart(f.geojson.geometry.coordinates, f.elev);
-  else $("elevChart").hidden = true;
+  if (f.elev && f.elev.idx){ drawElevChart(f.geojson.geometry.coordinates, f.elev); colorizeSlopeOverlay(f.geojson.geometry.coordinates, f.elev); }
+  else { $("elevChart").hidden = true; if (slopeLayer){ map.removeLayer(slopeLayer); slopeLayer = null; } }
   const ov = overlapRatio(f.geojson.geometry.coordinates);
   $("quality").hidden = false;
   $("quality").textContent = ov <= 0.04
     ? "Boucle propre — quasi aucun passage doublé"
     : `Tracé doublé sur ~${Math.round(ov*100)} %`;
   updateTime();
-  $("saveBtn").disabled = true;      // déjà enregistré
+  $("saveBtn").disabled = alreadySaved;      // déjà enregistré si chargé depuis les favoris
   $("rerollBtn").disabled = false;
   $("gpxBtn").disabled = false;
 }
@@ -1296,6 +1592,7 @@ function resetMap(){
 
   if (routeLayer)  { map.removeLayer(routeLayer);  routeLayer  = null; }
   if (decorLayer)  { map.removeLayer(decorLayer);  decorLayer  = null; }
+  if (slopeLayer)  { map.removeLayer(slopeLayer);  slopeLayer  = null; }
   if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
   if (meMarker)    { map.removeLayer(meMarker);    meMarker    = null; }
   viaMarkers.forEach(m => map.removeLayer(m));
