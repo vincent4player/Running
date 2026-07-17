@@ -143,6 +143,9 @@
     background:var(--paper);
   }
   .sheet.folded{transform:translateY(calc(100% - 58px))}
+  .sheet.compact .compact-hide{display:none}
+  .sheet.compact .controls{margin-bottom:2px}
+  #compactBtn.on{background:var(--pine);color:#fff}
   .grab{
     width:44px;height:5px;border-radius:99px;background:var(--line);
     margin:0 auto 4px;
@@ -417,6 +420,7 @@
   <div class="sheet-head">
     <div class="sheet-title">Nouvelle boucle <span class="ver">v3</span></div>
     <div class="sheet-hint" id="startHint">Touchez la carte pour placer le départ</div>
+    <button class="collapse-btn" id="compactBtn" title="Mode épuré : ne garder que l'essentiel" aria-label="Mode épuré">▤</button>
     <button class="collapse-btn" id="collapseBtn" title="Réduire le panneau" aria-label="Réduire le panneau">▾</button>
   </div>
 
@@ -437,24 +441,24 @@
     </div>
   </div>
 
-  <div class="modes" id="modes">
+  <div class="modes compact-hide" id="modes">
     <button class="mode on" data-mode="mix">Mixte</button>
     <button class="mode" data-mode="trail">Forêt</button>
     <button class="mode" data-mode="road">Route</button>
   </div>
 
-  <div class="vias">
+  <div class="vias compact-hide">
     <button class="chip" id="viaBtn">＋ Passage obligé</button>
     <span class="via-info" id="viaInfo">aucun</span>
     <button class="chip danger" id="viaClearBtn" hidden>Effacer</button>
   </div>
 
-  <div class="vias">
+  <div class="vias compact-hide">
     <button class="chip" id="quietBtn">🤫 Rues calmes</button>
     <span class="via-info">évite les grands axes (Mixte/Route)</span>
   </div>
 
-  <div class="vias">
+  <div class="vias compact-hide">
     <span class="via-info" style="flex:none">Bornes</span>
     <div class="marker-int" id="markerInt">
       <button class="mi on" data-int="1000">1 km</button>
@@ -472,7 +476,7 @@
     <button class="btn btn-pine" id="saveBtn" title="Ajouter aux favoris" aria-label="Ajouter aux favoris" disabled>★</button>
   </div>
 
-  <div class="stats-head">
+  <div class="stats-head compact-hide">
     <button class="unit-toggle" id="unitBtn">km</button>
   </div>
   <div class="stats" id="stats">
@@ -480,9 +484,9 @@
     <div class="stat"><b id="statElev">–</b><span>Dénivelé +</span></div>
     <div class="stat"><b id="statTime">–</b><span>Temps estimé</span></div>
   </div>
-  <div class="elev-chart" id="elevChart" hidden></div>
-  <div class="quality" id="quality" hidden></div>
-  <button class="chip share-chip" id="shareBtn" hidden>↗ Partager (Google Maps)</button>
+  <div class="elev-chart compact-hide" id="elevChart" hidden></div>
+  <div class="quality compact-hide" id="quality" hidden></div>
+  <button class="chip share-chip compact-hide" id="shareBtn" hidden>↗ Partager (Google Maps)</button>
 </section>
 
 <!-- Favoris -->
@@ -1440,7 +1444,8 @@ $("distInput").addEventListener("change", savePrefs);
 function savePrefs(){
   try{ localStorage.setItem(LS_PREFS, JSON.stringify({
     dist:$("distInput").value, paceMin:$("paceMin").value, paceSec:$("paceSec").value,
-    mode:runMode, markerInt:markerIntervalM, night:nightOverride, quiet:quietStreets, unit:unitSystem
+    mode:runMode, markerInt:markerIntervalM, night:nightOverride, quiet:quietStreets, unit:unitSystem,
+    compact: $("sheet").classList.contains("compact")
   })); }catch{}
 }
 (function loadPrefs(){
@@ -1461,6 +1466,7 @@ function savePrefs(){
       if (p.night !== undefined) nightOverride = p.night;
       if (p.quiet){ quietStreets = true; $("quietBtn").classList.add("on"); }
       if (p.unit === "mi"){ unitSystem = "mi"; applyUnit(); }
+      if (p.compact){ $("sheet").classList.add("compact"); $("compactBtn").classList.add("on"); }
     }
   }catch{}
 })();
@@ -1759,6 +1765,12 @@ $("favCloseBtn").addEventListener("click", closeFavs);
 
 /* ================= Panneau repliable ================= */
 $("collapseBtn").addEventListener("click", () => $("sheet").classList.toggle("folded"));
+
+$("compactBtn").addEventListener("click", () => {
+  const on = $("sheet").classList.toggle("compact");
+  $("compactBtn").classList.toggle("on", on);
+  savePrefs();
+});
 
 /* ---- glisser la poignée pour replier/déplier le panneau, au doigt comme
    à la souris (Pointer Events unifie les deux). Suivi progressif du doigt
