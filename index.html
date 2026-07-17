@@ -142,10 +142,12 @@
     height:200px;
     background:var(--paper);
   }
-  .sheet.folded{transform:translateY(calc(100% - 58px))}
+  .sheet.folded{transform:translateY(calc(100% - var(--fold-reveal, 58px)))}
   .sheet.compact .compact-hide{display:none}
   .sheet.compact .controls{margin-bottom:2px}
   #compactBtn.on{background:var(--pine);color:#fff}
+  .compact-only{display:none;gap:8px;padding-bottom:10px}
+  .sheet.compact .compact-only{display:flex}
   .grab{
     width:44px;height:5px;border-radius:99px;background:var(--line);
     margin:0 auto 4px;
@@ -156,7 +158,7 @@
   .grab:active{cursor:grabbing}
   .sheet-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 10px;gap:10px}
   .sheet-head .sheet-title{flex:none}
-  .sheet-head .sheet-hint{flex:1}
+  .sheet-head .sheet-hint{flex:1;min-width:0}
   .collapse-btn{
     flex:none;width:34px;height:34px;border-radius:10px;background:var(--field);
     font-size:16px;color:var(--ink-soft);transition:transform .25s ease;
@@ -170,7 +172,10 @@
     font-size:10px;color:var(--ink-soft);vertical-align:super;
     font-variation-settings:"wdth" 100,"wght" 600;text-transform:none;letter-spacing:0;
   }
-  .sheet-hint{font-size:12px;color:var(--ink-soft)}
+  .sheet-hint{
+    font-size:12px;color:var(--ink-soft);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
 
   .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .field{
@@ -425,6 +430,10 @@
   </div>
 
   <div class="start-chips" id="startChips"></div>
+  <div class="compact-only" id="compactVias">
+    <button class="chip" id="viaBtnC">＋ Passage</button>
+    <button class="chip" id="quietBtnC">🤫 Calme</button>
+  </div>
 
   <div class="controls">
     <div class="field">
@@ -722,10 +731,12 @@ function addVia(lat, lng){
 $("viaBtn").addEventListener("click", () => {
   viaMode = !viaMode;
   $("viaBtn").classList.toggle("on", viaMode);
+  $("viaBtnC").classList.toggle("on", viaMode);
   $("startHint").textContent = viaMode
     ? "Touchez la carte : chaque appui ajoute un passage"
     : (startMarker ? "Départ placé ✓" : "Touchez la carte pour placer le départ");
 });
+$("viaBtnC").addEventListener("click", () => $("viaBtn").click());
 $("viaClearBtn").addEventListener("click", () => {
   viaMarkers.forEach(m => map.removeLayer(m));
   viaMarkers = [];
@@ -861,8 +872,10 @@ document.querySelectorAll(".mode").forEach(b => b.addEventListener("click", () =
 $("quietBtn").addEventListener("click", () => {
   quietStreets = !quietStreets;
   $("quietBtn").classList.toggle("on", quietStreets);
+  $("quietBtnC").classList.toggle("on", quietStreets);
   savePrefs();
 });
+$("quietBtnC").addEventListener("click", () => $("quietBtn").click());
 
 document.querySelectorAll(".mi").forEach(b => b.addEventListener("click", () => {
   markerIntervalM = parseInt(b.dataset.int, 10);
@@ -1464,7 +1477,7 @@ function savePrefs(){
         document.querySelectorAll(".mi").forEach(x => x.classList.toggle("on", parseInt(x.dataset.int,10) === markerIntervalM));
       }
       if (p.night !== undefined) nightOverride = p.night;
-      if (p.quiet){ quietStreets = true; $("quietBtn").classList.add("on"); }
+      if (p.quiet){ quietStreets = true; $("quietBtn").classList.add("on"); $("quietBtnC").classList.add("on"); }
       if (p.unit === "mi"){ unitSystem = "mi"; applyUnit(); }
       if (p.compact){ $("sheet").classList.add("compact"); $("compactBtn").classList.add("on"); }
     }
@@ -1774,12 +1787,27 @@ $("compactBtn").addEventListener("click", () => {
 
 /* ---- glisser la poignée pour replier/déplier le panneau, au doigt comme
    à la souris (Pointer Events unifie les deux). Suivi progressif du doigt
-   pendant le geste, puis accroche (snap) sur l'état ouvert ou replié. ---- */
+   pendant le geste, puis accroche (snap) sur l'état ouvert ou replié.
+   La hauteur révélée une fois replié est MESURÉE (grab + en-tête réels),
+   pas un chiffre fixe : ça évite de couper le texte d'indice si jamais
+   il occupe plus de place que prévu. ---- */
+function measureFoldReveal(){
+  const head = document.querySelector(".sheet-head");
+  const grab = $("grab");
+  const h = Math.ceil(grab.offsetHeight + head.offsetHeight) + 14;
+  document.documentElement.style.setProperty("--fold-reveal", h + "px");
+  return h;
+}
+measureFoldReveal();
+window.addEventListener("load", measureFoldReveal);
+window.addEventListener("resize", measureFoldReveal);
+window.addEventListener("orientationchange", () => setTimeout(measureFoldReveal, 100));
+
 (function enableSheetDrag(){
   const sheet = $("sheet"), handle = $("grab");
   let dragging = false, startY = 0, startTranslate = 0, sheetH = 0;
 
-  function foldedOffset(){ return Math.max(0, sheetH - 58); }
+  function foldedOffset(){ return Math.max(0, sheetH - measureFoldReveal()); }
   function currentTranslate(){ return sheet.classList.contains("folded") ? foldedOffset() : 0; }
 
   function onDown(e){
